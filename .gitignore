@@ -1,0 +1,16 @@
+# Ignore miscellaneous files
+cscope.*
+*.swp
+*.patch
+*~
+.project
+.cproject
+
+# Ctags
+tags
+
+# common python virtual environment directories
+.env/
+env/
+.venv/
+venv/
