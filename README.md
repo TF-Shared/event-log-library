@@ -82,13 +82,13 @@ flexible and dynamic cryptographic functionality.
 **To build the library with SHA384 support:**
 
 ```bash
-cmake -DHASH_ALGORITHM=SHA324 ..
-make
+CC=aarch64-none-elf-gcc cmake -B build -DHASH_ALGORITHM=SHA384 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+cmake --build build
 ```
 
 **To build the library with default SHA256:**
 
 ```bash
-cmake ..
-make
+CC=aarch64-none-elf-gcc cmake -B build -DHASH_ALGORITHM=SHA256 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+cmake --build build
 ```
