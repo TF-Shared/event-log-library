@@ -14,7 +14,29 @@ set(CMAKE_C_EXTENSIONS TRUE)
 add_library(cxx_compiler_flags INTERFACE)
 target_compile_features(cxx_compiler_flags INTERFACE cxx_std_11)
 
-SET(TARGET_GROUP release CACHE STRING "Specify the Build Target [\"release\" by default]")
+set(
+    LOG_LEVEL "" CACHE STRING
+    "Log Level options:
+     0  - NONE
+     10 - ERROR
+     20 - NOTICE
+     30 - WARNING
+     40 - INFO
+     50 - VERBOSE"
+)
+
+if(LOG_LEVEL STREQUAL "")
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(LOG_LEVEL 20)
+    else()
+        set(LOG_LEVEL 40)
+    endif()
+endif()
+
+add_compile_definitions(EVLOG_LOG_LEVEL=${LOG_LEVEL})
+
+set(DEBUG_BACKEND_HEADER "log_backend_tf.h" CACHE STRING "Path to debug backend header")
+add_compile_definitions(DEBUG_BACKEND_HEADER="${DEBUG_BACKEND_HEADER}")
 
 if(HASH_ALGORITHM STREQUAL "SHA512")
     add_compile_definitions(TPM_ALG_ID=TPM_ALG_SHA512)
@@ -30,7 +52,11 @@ endif()
 add_library(eventlog STATIC
     ${PROJECT_SOURCE_DIR}/src/event_log.c
     ${PROJECT_SOURCE_DIR}/src/event_print.c
+    ${PROJECT_SOURCE_DIR}/src/digest.c
 )
 
 target_include_directories(eventlog PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+target_include_directories(eventlog PRIVATE ${CMAKE_SOURCE_DIR}/include/private)
+
 target_link_libraries(eventlog PUBLIC cxx_compiler_flags)

@@ -6,10 +6,59 @@
 
 #include <errno.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
+#include "debug.h"
+#include "digest.h"
 #include "event_log.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+/**
+ * @brief Pretty-print a digest as 16-byte spaced hex rows with a
+ * header/continuation prefix.
+ *
+ * Emits one or more lines through the NOTICE() logging macro.
+ * Each line renders up to 16 bytes as "aa bb …".
+ *
+ * @param[in] buf         Byte array to print.
+ * @param[in] buf_len     Number of bytes in @p digest.
+ * @param[in] prefix      Prefix to append to the byte array (e.g. 'VendorInfo      :').
+ *
+ */
+static void event_log_print_spaced_hex(const uint8_t *buf, size_t buf_len,
+				       const char *prefix)
+{
+	char output_buf[256];
+	const size_t cap = sizeof(output_buf);
+	size_t pos = 0U;
+	size_t chunk;
+
+	/* Start from just after the prefix */
+	event_log_append_str(output_buf, cap, &pos, prefix);
+
+	for (size_t off = 0; off < buf_len; off += 16U) {
+		chunk = (buf_len - off >= 16U) ? 16U : (buf_len - off);
+
+		/* write the 16-byte (or tail) chunk */
+		pos += event_log_write_hex_spaced(output_buf + pos,
+						  (pos < cap) ? (cap - pos) : 0,
+						  chunk, buf + off);
+
+		NOTICE("  %s\n", output_buf);
+
+		/* prepare next line: reset to prefix only */
+		pos = 0;
+		output_buf[0] = '\0';
+		event_log_append_str(output_buf, cap, &pos, "\t\t      : ");
+	}
+}
+
+static void event_log_print_digest(const uint8_t *digest, size_t digest_len)
+{
+	event_log_print_spaced_hex(digest, digest_len, "Digest             : ");
+}
 
 /**
  * Print a TCG_EfiSpecIDEventStruct entry from the event log.
@@ -34,6 +83,7 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	uint32_t event_size, number_of_algorithms;
 	size_t digest_len;
 	const uint8_t *end_ptr = (uint8_t *)((uintptr_t)*log_addr + *log_size);
+	const struct event_log_algorithm *algo_info;
 
 	if (*log_size < sizeof(id_event_headers_t)) {
 		return -EINVAL;
@@ -43,48 +93,36 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	 * EventType of EV_NO_ACTION, Digest of 20 bytes of 0, and
 	 * Event content defined as TCG_EfiSpecIDEventStruct.
 	 */
-	printf("TCG_EfiSpecIDEvent:\n");
-	printf("  PCRIndex           : %u\n", event->header.pcr_index);
+	NOTICE("TCG_EfiSpecIDEvent:\n");
+	NOTICE("  PCRIndex           : %u\n", event->header.pcr_index);
 	if (event->header.pcr_index != (uint32_t)PCR_0) {
 		return -EINVAL;
 	}
 
-	printf("  EventType          : %u\n", event->header.event_type);
+	NOTICE("  EventType          : %u\n", event->header.event_type);
 	if (event->header.event_type != EV_NO_ACTION) {
 		return -EINVAL;
 	}
 
-	printf("  Digest             :");
-	for (i = 0U; i < sizeof(event->header.digest); ++i) {
-		uint8_t val = event->header.digest[i];
-
-		(void)printf(" %02x", val);
-		if ((i & 0xFU) == 0U) {
-			(void)printf("\n");
-			printf("\t\t      :");
-		}
-	}
-
-	if ((i & 0xFU) != 0U) {
-		(void)printf("\n");
-	}
+	event_log_print_digest(event->header.digest,
+			       sizeof(event->header.digest));
 
 	/* EventSize */
 	event_size = event->header.event_size;
-	printf("  EventSize          : %u\n", event_size);
+	NOTICE("  EventSize          : %u\n", event_size);
 
-	printf("  Signature          : %s\n", event->struct_header.signature);
-	printf("  PlatformClass      : %u\n",
+	NOTICE("  Signature          : %s\n", event->struct_header.signature);
+	NOTICE("  PlatformClass      : %u\n",
 	       event->struct_header.platform_class);
-	printf("  SpecVersion        : %u.%u.%u\n",
+	NOTICE("  SpecVersion        : %u.%u.%u\n",
 	       event->struct_header.spec_version_major,
 	       event->struct_header.spec_version_minor,
 	       event->struct_header.spec_errata);
-	printf("  UintnSize          : %u\n", event->struct_header.uintn_size);
+	NOTICE("  UintnSize          : %u\n", event->struct_header.uintn_size);
 
 	/* NumberOfAlgorithms */
 	number_of_algorithms = event->struct_header.number_of_algorithms;
-	printf("  NumberOfAlgorithms : %u\n", number_of_algorithms);
+	NOTICE("  NumberOfAlgorithms : %u\n", number_of_algorithms);
 
 	/* Address of DigestSizes[] */
 	alg_ptr = event->struct_header.digest_size;
@@ -95,29 +133,20 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 		return -EFAULT;
 	}
 
-	printf("  DigestSizes        :\n");
-	for (i = 0U; i < number_of_algorithms; ++i) {
-		printf("    #%u AlgorithmId   : SHA", i);
-		uint16_t algorithm_id = alg_ptr[i].algorithm_id;
+	NOTICE("  DigestSizes        :\n");
 
-		switch (algorithm_id) {
-		case TPM_ALG_SHA256:
-			(void)printf("256\n");
-			break;
-		case TPM_ALG_SHA384:
-			(void)printf("384\n");
-			break;
-		case TPM_ALG_SHA512:
-			(void)printf("512\n");
-			break;
-		default:
-			(void)printf("?\n");
-			// ERROR("Algorithm 0x%x not found\n", algorithm_id);
-			printf("Algorithm 0x%x not found\n", algorithm_id);
+	for (i = 0U; i < number_of_algorithms; ++i) {
+		uint16_t algorithm_id = alg_ptr[i].algorithm_id;
+		algo_info = event_log_algorithm_lookup(algorithm_id);
+
+		if (algo_info == NULL) {
+			ERROR("    #%u AlgorithmId   : %d (unknown)\n", i,
+			      algorithm_id);
 			return -ENOENT;
 		}
 
-		printf("       DigestSize    : %u\n", alg_ptr[i].digest_size);
+		NOTICE("    #%u AlgorithmId   : %s\n", i, algo_info->name);
+		NOTICE("       DigestSize    : %u\n", alg_ptr[i].digest_size);
 	}
 
 	/* Address of VendorInfoSize */
@@ -127,7 +156,7 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	}
 
 	info_size = *info_size_ptr++;
-	printf("  VendorInfoSize     : %u\n", info_size);
+	NOTICE("  VendorInfoSize     : %u\n", info_size);
 
 	/* Check VendorInfo end address */
 	if (((uintptr_t)info_size_ptr + info_size) > (uintptr_t)end_ptr) {
@@ -140,13 +169,8 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 		return -EFAULT;
 	}
 
-	if (info_size != 0U) {
-		printf("  VendorInfo         :");
-		for (i = 0U; i < info_size; ++i) {
-			(void)printf(" %02x", *info_size_ptr++);
-		}
-		(void)printf("\n");
-	}
+	event_log_print_spaced_hex(info_size_ptr, info_size,
+				   "  VendorInfo         : ");
 
 	*log_size -= (uintptr_t)info_size_ptr - (uintptr_t)*log_addr;
 	*log_addr = info_size_ptr;
@@ -170,27 +194,27 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
 {
 	uint32_t event_size, count;
-	size_t sha_size, digests_size = 0U;
 	void *ptr = *log_addr;
+	const struct event_log_algorithm *algo_info;
 	const uint8_t *end_ptr = (uint8_t *)((uintptr_t)*log_addr + *log_size);
 
 	if (*log_size < sizeof(event2_header_t)) {
 		return -EINVAL;
 	}
 
-	printf("PCR_Event2:\n");
-	printf("  PCRIndex           : %u\n",
+	NOTICE("PCR_Event2:\n");
+	NOTICE("  PCRIndex           : %u\n",
 	       ((event2_header_t *)ptr)->pcr_index);
-	printf("  EventType          : %u\n",
+	NOTICE("  EventType          : %u\n",
 	       ((event2_header_t *)ptr)->event_type);
 
 	count = ((event2_header_t *)ptr)->digests.count;
 	if (count < 1U) {
-		printf("Invalid Digests Count      : %u\n", count);
+		NOTICE("Invalid Digests Count      : %u\n", count);
 		return -EINVAL;
 	}
 
-	printf("  Digests Count      : %u\n", count);
+	NOTICE("  Digests Count      : %u\n", count);
 
 	/* Address of TCG_PCR_EVENT2.Digests[] */
 	ptr = (uint8_t *)ptr + sizeof(event2_header_t);
@@ -205,46 +229,25 @@ static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
 			return -EFAULT;
 		}
 
-		printf("    #%u AlgorithmId   : SHA", i);
-		switch (((tpmt_ha *)ptr)->algorithm_id) {
-		case TPM_ALG_SHA256:
-			sha_size = SHA256_DIGEST_SIZE;
-			(void)printf("256\n");
-			break;
-		case TPM_ALG_SHA384:
-			sha_size = SHA384_DIGEST_SIZE;
-			(void)printf("384\n");
-			break;
-		case TPM_ALG_SHA512:
-			sha_size = SHA512_DIGEST_SIZE;
-			(void)printf("512\n");
-			break;
-		default:
-			(void)printf("?\n");
-			printf("Algorithm 0x%x not found\n",
-			       ((tpmt_ha *)ptr)->algorithm_id);
+		algo_info = event_log_algorithm_lookup(
+			((tpmt_ha *)ptr)->algorithm_id);
+
+		if (algo_info == NULL) {
+			ERROR("    #%u AlgorithmId   : %d (unknown)\n", i,
+			      ((tpmt_ha *)ptr)->algorithm_id);
 			return -ENOENT;
 		}
 
+		NOTICE("    #%u AlgorithmId   : %s\n", i, algo_info->name);
+
 		/* End of Digest[] */
 		ptr = (uint8_t *)((uintptr_t)ptr + offsetof(tpmt_ha, digest));
-		if (((uintptr_t)ptr + sha_size) > (uintptr_t)end_ptr) {
+		if (((uintptr_t)ptr + algo_info->size) > (uintptr_t)end_ptr) {
 			return -EFAULT;
 		}
 
-		/* Total size of all digests */
-		digests_size += sha_size;
-
-		printf("       Digest        :");
-		for (unsigned int j = 0U; j < sha_size; ++j) {
-			(void)printf(" %02x", *(uint8_t *)ptr++);
-			if ((j & 0xFU) == 0xFU) {
-				(void)printf("\n");
-				if (j < (sha_size - 1U)) {
-					printf("\t\t      :");
-				}
-			}
-		}
+		event_log_print_digest(ptr, algo_info->size);
+		ptr += algo_info->size;
 	}
 
 	/* TCG_PCR_EVENT2.EventSize */
@@ -254,7 +257,7 @@ static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
 	}
 
 	event_size = ((event2_data_t *)ptr)->event_size;
-	printf("  EventSize          : %u\n", event_size);
+	NOTICE("  EventSize          : %u\n", event_size);
 
 	/* Address of TCG_PCR_EVENT2.Event[EventSize] */
 	ptr = (uint8_t *)((uintptr_t)ptr + offsetof(event2_data_t, event));
@@ -266,12 +269,12 @@ static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
 
 	if ((event_size == sizeof(startup_locality_event_t)) &&
 	    (strcmp((const char *)ptr, TCG_STARTUP_LOCALITY_SIGNATURE) == 0)) {
-		printf("  Signature          : %s\n",
+		NOTICE("  Signature          : %s\n",
 		       ((startup_locality_event_t *)ptr)->signature);
-		printf("  StartupLocality    : %u\n",
+		NOTICE("  StartupLocality    : %u\n",
 		       ((startup_locality_event_t *)ptr)->startup_locality);
 	} else {
-		printf("  Event              : %s\n", (uint8_t *)ptr);
+		NOTICE("  Event              : %s\n", (uint8_t *)ptr);
 	}
 
 	*log_size -= (uintptr_t)ptr + event_size - (uintptr_t)*log_addr;

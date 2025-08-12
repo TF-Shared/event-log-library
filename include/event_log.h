@@ -37,6 +37,12 @@ struct event_log_hash_info {
 	size_t count;
 };
 
+struct event_log_algorithm {
+	uint16_t id;
+	const char *name;
+	uint16_t size;
+};
+
 #define ID_EVENT_SIZE                                           \
 	(sizeof(id_event_headers_t) +                           \
 	 (sizeof(id_event_algorithm_size_t) * HASH_ALG_COUNT) + \
