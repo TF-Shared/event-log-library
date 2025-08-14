@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "event_log.h"
+#include "event_record.h"
 
 /* Running Event Log Pointer */
 static uint8_t *log_ptr;
