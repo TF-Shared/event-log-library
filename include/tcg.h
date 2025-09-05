@@ -63,6 +63,15 @@
 #define TPM_ALG_SHA384 0x000C
 #define TPM_ALG_SHA512 0x000D
 
+/*
+ * Helpers for setting TCG digest information based on the macros above and in
+ * sha_common_macros.h
+ */
+#define CAT(a, b) CAT_(a, b)
+#define CAT_(a, b) a##b
+
+#define TCG_HASH_ALG(alg) { CAT(TPM_ALG_, alg), CAT(alg, _DIGEST_SIZE) }
+
 /* TCG Platform Type */
 #define PLATFORM_CLASS_CLIENT 0
 #define PLATFORM_CLASS_SERVER 1

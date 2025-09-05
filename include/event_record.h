@@ -78,6 +78,47 @@ int event_log_record(const uint8_t *hash, uint32_t event_type,
 		     const event_log_metadata_t *metadata_ptr);
 
 /**
+ * @brief Write a PCR event with multiple digests.
+ *
+ * @param[in] pcr_index        PCR index of the event.
+ * @param[in] event_type       Type of the event.
+ * @param[in] digests          Pointer to digest values.
+ * @param[in] event_data       Pointer to event data.
+ * @param[in] event_data_size  Size of event data in bytes.
+ *
+ * @return 0 on success, negative on error.
+ *
+  * @note In the PC Client spec for TPM 1.2, the event log used a fixed SHA-1 digest
+ *       (20 bytes) for each event (SHA1 log format). With TPM 2.0, PCRs may use
+ *       multiple hash algorithms, so each event must include all digests recorded
+ *       (crypto-agile event log format).
+ *
+ */
+
+int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
+			       const tpml_digest_values *digests,
+			       const uint8_t *event_data,
+			       uint32_t event_data_size);
+
+/**
+ * @brief Write a PCR event with a single digest.
+ *
+ * @param[in] pcr_index        PCR index of the event.
+ * @param[in] event_type       Type of the event.
+ * @param[in] algorithm_id     Hash function ID.
+ * @param[in] digest           Pointer to digest values.
+ * @param[in] event_data       Pointer to event data.
+ * @param[in] event_data_size  Size of event data in bytes.
+ *
+ * @return 0 on success, negative on error.
+ *
+ */
+int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
+				      uint32_t algorithm_id, uint8_t *digest,
+				      const uint8_t *event_data,
+				      uint32_t event_data_size);
+
+/**
  * Initialize the Event Log with mandatory header events.
  *
  * Writes the Specification ID (SpecID) and Startup Locality events

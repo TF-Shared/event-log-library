@@ -6,8 +6,10 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <string.h>
 
+#include "debug.h"
 #include "event_log.h"
 #include "event_record.h"
 
@@ -19,6 +21,8 @@ static uintptr_t log_end;
 
 /* Hash function for event log operations set by user. */
 static const struct event_log_hash_info *crypto_hash_info;
+
+static const tcg_efi_spec_id_event_t *spec_id_header;
 
 /* TCG_EfiSpecIdEvent */
 static const id_event_headers_t id_event_header = {
@@ -66,6 +70,25 @@ enum crypto_md_algo {
 	CRYPTO_MD_SHA384,
 	CRYPTO_MD_SHA512,
 };
+
+/* size lookup from your spec_id_header table */
+static inline uint16_t digest_size_for_alg(uint16_t alg)
+{
+	assert(spec_id_header != NULL);
+
+	for (size_t k = 0U; k < spec_id_header->number_of_algorithms; k++) {
+		if (spec_id_header->digest_size[k].algorithm_id == alg) {
+			return spec_id_header->digest_size[k].digest_size;
+		}
+	}
+
+	return 0;
+}
+
+static inline bool exceeds_bounds(uintptr_t ptr, size_t min_size)
+{
+	return min_size > log_end - ptr;
+}
 
 int event_log_record(const uint8_t *hash, uint32_t event_type,
 		     const event_log_metadata_t *metadata_ptr)
@@ -128,6 +151,170 @@ int event_log_record(const uint8_t *hash, uint32_t event_type,
 	/* End of event data */
 	log_ptr = (uint8_t *)((uintptr_t)ptr + offsetof(event2_data_t, event) +
 			      name_len);
+
+	return 0;
+}
+
+int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
+				      uint32_t algorithm_id, uint8_t *digest,
+				      const uint8_t *event_data,
+				      uint32_t event_data_size)
+{
+	uint8_t *dst_p;
+	event2_header_t *pcr_event = (event2_header_t *)log_ptr;
+	uint16_t digest_size;
+
+	if (log_ptr == NULL || spec_id_header == NULL) {
+		ERROR("Cannot call library function, initialization not completed.\n");
+		return -EFAULT;
+	}
+
+	if (event_type != EV_NO_ACTION && digest == NULL) {
+		return -EINVAL;
+	}
+
+	if (event_data_size > 0U && event_data == NULL) {
+		return -EINVAL;
+	}
+
+	/* Minimum space: header without digests/data */
+	if (exceeds_bounds((uintptr_t)pcr_event, sizeof(event2_header_t))) {
+		return -ENOMEM;
+	}
+
+	pcr_event->pcr_index = pcr_index;
+	pcr_event->event_type = event_type;
+
+	/* TCG_PCR_EVENT2.Digests.Count */
+	if (spec_id_header->number_of_algorithms != 1U ||
+	    algorithm_id != spec_id_header->digest_size[0].algorithm_id) {
+		/*
+		 * Only write single digests when only one algorithm is registered, each
+		 * entry should have as many digests as are registered in the SpecID
+		 * event.
+		 */
+		return -EINVAL;
+	}
+
+	pcr_event->digests.count = spec_id_header->number_of_algorithms;
+
+	/* TCG_PCR_EVENT2.Digests.Digests[] */
+	pcr_event->digests.digests->algorithm_id = algorithm_id;
+	digest_size = digest_size_for_alg(algorithm_id);
+	if (digest_size == 0U) {
+		return -EINVAL;
+	}
+
+	(void)memcpy(pcr_event->digests.digests[0].digest, digest, digest_size);
+
+	dst_p = pcr_event->digests.digests[0].digest + digest_size;
+
+	if (exceeds_bounds((uintptr_t)dst_p,
+			   sizeof(event_data) + event_data_size)) {
+		return -ENOMEM;
+	}
+
+	((event2_data_t *)dst_p)->event_size = event_data_size;
+	dst_p += offsetof(event2_data_t, event);
+
+	if (event_data_size > 0U) {
+		(void)memcpy(dst_p, event_data, event_data_size);
+		dst_p += event_data_size;
+	}
+
+	log_ptr = dst_p;
+
+	return 0;
+}
+
+int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
+			       const tpml_digest_values *digests,
+			       const uint8_t *event_data,
+			       uint32_t event_data_size)
+{
+	size_t tpmt_ha_digest_sz;
+	uint8_t *dst_p;
+	tpmt_ha *curr = NULL;
+	event2_header_t *pcr_event = (event2_header_t *)log_ptr;
+	uint16_t digest_size;
+
+	if (log_ptr == NULL || spec_id_header == NULL) {
+		ERROR("Cannot call library function, initialization not completed.\n");
+		return -EFAULT;
+	}
+
+	if (event_type != EV_NO_ACTION) {
+		if (digests == NULL || digests->count == 0 ||
+		    digests->count != spec_id_header->number_of_algorithms) {
+			ERROR("Invalid digests, none passed or mismatch with SpecID Header.\n");
+			return -EINVAL;
+		}
+
+		curr = (tpmt_ha *)&digests->digests;
+	}
+
+	if (event_data_size > 0U && event_data == NULL) {
+		return -EINVAL;
+	}
+
+	/* Minimum space: header without digests/data */
+	if (exceeds_bounds((uintptr_t)pcr_event, sizeof(event2_header_t))) {
+		return -ENOMEM;
+	}
+
+	pcr_event->pcr_index = pcr_index;
+	pcr_event->event_type = event_type;
+
+	/* TCG_PCR_EVENT2.Digests.Count */
+	pcr_event->digests.count = spec_id_header->number_of_algorithms;
+
+	/* TCG_PCR_EVENT2.Digests.Digests[] */
+	dst_p = (uint8_t *)&pcr_event->digests.digests;
+
+	for (size_t i = 0; i < spec_id_header->number_of_algorithms; i++) {
+		if (pcr_event->event_type == EV_NO_ACTION) {
+			((tpmt_ha *)dst_p)->algorithm_id =
+				spec_id_header->digest_size[i].algorithm_id;
+
+			(void)memset(
+				((tpmt_ha *)dst_p)->digest, 0,
+				spec_id_header->digest_size[i].digest_size);
+
+			dst_p += sizeof(tpmt_ha) +
+				 spec_id_header->digest_size[i].digest_size;
+		} else {
+			digest_size = digest_size_for_alg(curr->algorithm_id);
+
+			tpmt_ha_digest_sz = sizeof(tpmt_ha) + digest_size;
+
+			if (exceeds_bounds((uintptr_t)dst_p,
+					   tpmt_ha_digest_sz)) {
+				return -ENOMEM;
+			}
+
+			/* TCG_PCR_EVENT2.Digests.Digests[i] */
+			(void)memcpy(dst_p, curr, tpmt_ha_digest_sz);
+
+			/* Increment to next digest location accounting for variable length digests. */
+			curr = (tpmt_ha *)((uint8_t *)curr + digest_size);
+			dst_p += tpmt_ha_digest_sz;
+		}
+	}
+
+	if (exceeds_bounds((uintptr_t)dst_p,
+			   sizeof(event_data) + event_data_size)) {
+		return -ENOMEM;
+	}
+
+	((event2_data_t *)dst_p)->event_size = event_data_size;
+	dst_p += offsetof(event2_data_t, event);
+
+	if (event_data_size > 0U) {
+		(void)memcpy(dst_p, event_data, event_data_size);
+		dst_p += event_data_size;
+	}
+
+	log_ptr = dst_p;
 
 	return 0;
 }
