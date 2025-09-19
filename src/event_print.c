@@ -35,24 +35,42 @@ static void event_log_print_spaced_hex(const uint8_t *buf, size_t buf_len,
 	const size_t cap = sizeof(output_buf);
 	size_t pos = 0U;
 	size_t chunk;
+	size_t free;
+
+	const char cont[] = "                   : ";
+
+	if (buf == NULL || buf_len == 0U) {
+		return;
+	}
 
 	/* Start from just after the prefix */
 	event_log_append_str(output_buf, cap, &pos, prefix);
 
-	for (size_t off = 0; off < buf_len; off += 16U) {
+	for (size_t off = 0U; off < buf_len; off += 16U) {
 		chunk = (buf_len - off >= 16U) ? 16U : (buf_len - off);
+		free = (pos < cap) ? cap - pos : 0U;
+
+		if (free == 0U) {
+			/* buffer full — print what we have (after forcing NUL) and restart line */
+			output_buf[cap - 1] = '\0';
+			NOTICE("  %s\n", output_buf);
+
+			pos = 0U;
+			output_buf[0] = '\0';
+			event_log_append_str(output_buf, cap, &pos, cont);
+			free = cap - pos;
+		}
 
 		/* write the 16-byte (or tail) chunk */
-		pos += event_log_write_hex_spaced(output_buf + pos,
-						  (pos < cap) ? (cap - pos) : 0,
-						  chunk, buf + off);
+		pos += event_log_write_hex_spaced(output_buf + pos, free, chunk,
+						  buf + off);
 
 		NOTICE("  %s\n", output_buf);
 
 		/* prepare next line: reset to prefix only */
-		pos = 0;
+		pos = 0U;
 		output_buf[0] = '\0';
-		event_log_append_str(output_buf, cap, &pos, "\t\t      : ");
+		event_log_append_str(output_buf, cap, &pos, cont);
 	}
 }
 
