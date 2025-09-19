@@ -36,8 +36,8 @@ static void event_log_print_spaced_hex(const uint8_t *buf, size_t buf_len,
 	size_t pos = 0U;
 	size_t chunk;
 	size_t free;
-
-	const char cont[] = "                   : ";
+	size_t space_width;
+	char cont[128];
 
 	if (buf == NULL || buf_len == 0U) {
 		return;
@@ -45,6 +45,18 @@ static void event_log_print_spaced_hex(const uint8_t *buf, size_t buf_len,
 
 	/* Start from just after the prefix */
 	event_log_append_str(output_buf, cap, &pos, prefix);
+	event_log_append_str(output_buf, cap, &pos, ": ");
+
+	/* width of spaces before ':' in the continuation line */
+	space_width = (pos >= 2) ? (pos - 2) : 0U;
+	if (space_width > sizeof(cont) - 3U) {
+		space_width = sizeof(cont) - 3U;
+	}
+
+	memset(cont, ' ', space_width);
+	cont[space_width] = ':';
+	cont[space_width + 1] = ' ';
+	cont[space_width + 2] = '\0';
 
 	for (size_t off = 0U; off < buf_len; off += 16U) {
 		chunk = (buf_len - off >= 16U) ? 16U : (buf_len - off);
@@ -76,7 +88,11 @@ static void event_log_print_spaced_hex(const uint8_t *buf, size_t buf_len,
 
 static void event_log_print_digest(const uint8_t *digest, size_t digest_len)
 {
-	event_log_print_spaced_hex(digest, digest_len, "Digest             : ");
+	/*
+	 * Add extra padding at the start of the digest so it's nested under its
+	 * respective AlgorithmID.
+	 */
+	event_log_print_spaced_hex(digest, digest_len, "     Digest        ");
 }
 
 /**
