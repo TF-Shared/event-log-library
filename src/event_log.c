@@ -261,7 +261,7 @@ int event_log_init_and_reg(uint8_t *start, uint8_t *finish,
 	}
 
 	if (hash_info == NULL || hash_info->func == NULL ||
-	    hash_info->count < 0 || hash_info->count > HASH_ALG_COUNT) {
+	    hash_info->count == 0U || hash_info->count > HASH_ALG_COUNT) {
 		return -EINVAL;
 	}
 
