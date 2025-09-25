@@ -55,71 +55,6 @@ static inline bool exceeds_bounds(uintptr_t ptr, size_t min_size)
 	return min_size > log_end - ptr;
 }
 
-int event_log_record(const uint8_t *hash, uint32_t event_type,
-		     const event_log_metadata_t *metadata_ptr)
-{
-	void *ptr = log_ptr;
-	uint32_t name_len = 0U;
-
-	/* event_log_buf_init() must have been called prior to this. */
-	if (hash == NULL || metadata_ptr == NULL || log_ptr == NULL) {
-		return -EINVAL;
-	}
-
-	if (metadata_ptr->name != NULL) {
-		name_len = (uint32_t)strlen(metadata_ptr->name) + 1U;
-	}
-
-	/* Check for space in Event Log buffer */
-	if (((uintptr_t)ptr + (uint32_t)EVENT2_HDR_SIZE + name_len) > log_end) {
-		return -ENOMEM;
-	}
-
-	/*
-	 * As per TCG specifications, firmware components that are measured
-	 * into PCR[0] must be logged in the event log using the event type
-	 * EV_POST_CODE.
-	 */
-	/* TCG_PCR_EVENT2.PCRIndex */
-	((event2_header_t *)ptr)->pcr_index = metadata_ptr->pcr;
-
-	/* TCG_PCR_EVENT2.EventType */
-	((event2_header_t *)ptr)->event_type = event_type;
-
-	/* TCG_PCR_EVENT2.Digests.Count */
-	ptr = (uint8_t *)ptr + offsetof(event2_header_t, digests);
-	((tpml_digest_values *)ptr)->count = HASH_ALG_COUNT;
-
-	/* TCG_PCR_EVENT2.Digests[] */
-	ptr = (uint8_t *)((uintptr_t)ptr +
-			  offsetof(tpml_digest_values, digests));
-
-	/* TCG_PCR_EVENT2.Digests[].AlgorithmId */
-	((tpmt_ha *)ptr)->algorithm_id = TPM_ALG_ID;
-
-	/* TCG_PCR_EVENT2.Digests[].Digest[] */
-	ptr = (uint8_t *)((uintptr_t)ptr + offsetof(tpmt_ha, digest));
-
-	/* Copy digest */
-	(void)memcpy(ptr, (const void *)hash, TCG_DIGEST_SIZE);
-
-	/* TCG_PCR_EVENT2.EventSize */
-	ptr = (uint8_t *)((uintptr_t)ptr + TCG_DIGEST_SIZE);
-	((event2_data_t *)ptr)->event_size = name_len;
-
-	/* Copy event data to TCG_PCR_EVENT2.Event */
-	if (metadata_ptr->name != NULL) {
-		(void)memcpy((void *)(((event2_data_t *)ptr)->event),
-			     (const void *)metadata_ptr->name, name_len);
-	}
-
-	/* End of event data */
-	log_ptr = (uint8_t *)((uintptr_t)ptr + offsetof(event2_data_t, event) +
-			      name_len);
-
-	return 0;
-}
-
 int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 				      uint32_t algorithm_id, uint8_t *digest,
 				      const uint8_t *event_data,
@@ -281,6 +216,50 @@ int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
 
 	log_ptr = dst_p;
 
+	return 0;
+}
+
+int event_log_write_pcr_event(uint32_t pcr_index, uint32_t event_type,
+			      const uint8_t *digest, const uint8_t *event_data,
+			      uint32_t event_data_size)
+{
+	tcg_pcr_event_t *pcr_event = (tcg_pcr_event_t *)log_ptr;
+
+	if (event_data_size > 0U && event_data == NULL) {
+		return -EINVAL;
+	}
+
+	/* Minimum space: header without digests/data */
+	if (exceeds_bounds((uintptr_t)pcr_event, sizeof(tcg_pcr_event_t))) {
+		return -ENOMEM;
+	}
+
+	/* TCG_PCR_EVENT.PCRIndex */
+	pcr_event->pcr_index = pcr_index;
+
+	/* TCG_PCR_EVENT.EventType */
+	pcr_event->event_type = event_type;
+
+	/* TCG_PCR_EVENT.Digest */
+	if (digest != NULL) {
+		(void)memcpy(pcr_event->digest, digest, SHA1_DIGEST_SIZE);
+	} else {
+		(void)memset(pcr_event->digest, 0, SHA1_DIGEST_SIZE);
+	}
+
+	/* TCG_PCR_EVENT.EventSize*/
+	pcr_event->event_size = event_data_size;
+
+	if (exceeds_bounds((uintptr_t)pcr_event->event,
+			   pcr_event->event_size)) {
+		return -ENOMEM;
+	}
+
+	if (event_data_size > 0U) {
+		(void)memcpy(pcr_event->event, event_data, event_data_size);
+	}
+
+	log_ptr = (uint8_t *)pcr_event->event + event_data_size;
 	return 0;
 }
 

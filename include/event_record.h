@@ -72,23 +72,6 @@ int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
 			   const struct event_log_hash_info *hash_info);
 
 /**
- * Record a measurement event in the Event Log.
- *
- * Writes a TCG_PCR_EVENT2 structure to the Event Log using the
- * provided hash and metadata. This function assumes the buffer
- * has enough space and that `event_log_buf_init()` has been called.
- *
- * @param[in] hash         Pointer to the digest (TCG_DIGEST_SIZE bytes).
- * @param[in] event_type   Type of the event, as defined in tcg.h.
- * @param[in] metadata_ptr Pointer to an event_log_metadata_t structure
- *                         providing event-specific context (e.g., PCR index, name).
- *
- * @return 0 on success, or -ENOMEM if the buffer has insufficient space.
- */
-int event_log_record(const uint8_t *hash, uint32_t event_type,
-		     const event_log_metadata_t *metadata_ptr);
-
-/**
  * @brief Write a PCR event with multiple digests.
  *
  * @param[in] pcr_index        PCR index of the event.
@@ -105,7 +88,6 @@ int event_log_record(const uint8_t *hash, uint32_t event_type,
  *       (crypto-agile event log format).
  *
  */
-
 int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
 			       const tpml_digest_values *digests,
 			       const uint8_t *event_data,
@@ -128,6 +110,25 @@ int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 				      uint32_t algorithm_id, uint8_t *digest,
 				      const uint8_t *event_data,
 				      uint32_t event_data_size);
+
+/**
+ * @brief Write a PCR event with a single digest.
+ *
+ * @param[in] pcr_index        PCR index of the event.
+ * @param[in] event_type       Type of the event.
+ * @param[in] digest           Pointer to event digest.
+ * @param[in] event_data       Pointer to event data.
+ * @param[in] event_data_size  Size of event data in bytes.
+ *
+ * @return 0 on success, negative on error.
+ *
+ * @note In TPM 1.2 platforms, the event log always uses SHA-1 digests
+ *       (SHA1 log format). For TPM 2.0, see @ref event_log_write_pcr_event2
+ *       for the crypto-agile event log format.
+ */
+int event_log_write_pcr_event(uint32_t pcr_index, uint32_t event_type,
+			      const uint8_t *digest, const uint8_t *event_data,
+			      uint32_t event_data_size);
 
 /**
  * @brief Initialize the Event Log with mandatory header events.
