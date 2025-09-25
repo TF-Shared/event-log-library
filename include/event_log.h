@@ -46,7 +46,7 @@ struct event_log_algorithm {
 #define ID_EVENT_SIZE                                           \
 	(sizeof(id_event_headers_t) +                           \
 	 (sizeof(id_event_algorithm_size_t) * HASH_ALG_COUNT) + \
-	 sizeof(id_event_struct_data_t))
+	 sizeof(tcg_vendor_info_t))
 
 #define LOC_EVENT_SIZE                                                 \
 	(sizeof(event2_header_t) + sizeof(tpmt_ha) + TCG_DIGEST_SIZE + \

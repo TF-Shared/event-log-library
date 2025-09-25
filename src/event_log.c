@@ -177,9 +177,9 @@ int event_log_write_specid_event(void)
 	 * TCG_EfiSpecIDEventStruct.vendorInfoSize
 	 * No vendor data
 	 */
-	((id_event_struct_data_t *)ptr)->vendor_info_size = 0;
+	((tcg_vendor_info_t *)ptr)->vendor_info_size = 0;
 	log_ptr = (uint8_t *)((uintptr_t)ptr +
-			      offsetof(id_event_struct_data_t, vendor_info));
+			      offsetof(tcg_vendor_info_t, vendor_info));
 
 	return 0;
 }

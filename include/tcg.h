@@ -147,7 +147,7 @@ typedef struct {
  * Ref. Table 15 TCG_EfiSpecIdEvent
  * TCG PC Client Platform Firmware Profile 9.4.5.1
  */
-typedef struct {
+typedef struct tcg_efi_spec_id_event {
 	/*
 	 * The NUL-terminated ASCII string "Spec ID Event03".
 	 * SHALL be set to {0x53, 0x70, 0x65, 0x63, 0x20, 0x49, 0x44,
@@ -203,7 +203,7 @@ typedef struct {
 	 * is the size of the respective digest.
 	 */
 	id_event_algorithm_size_t digest_size[]; /* number_of_algorithms */
-} id_event_struct_header_t;
+} tcg_efi_spec_id_event_t;
 
 typedef struct {
 	/*
@@ -222,16 +222,16 @@ typedef struct {
 	 *
 	 */
 	uint8_t vendor_info[]; /* [vendorInfoSize] */
-} id_event_struct_data_t;
+} tcg_vendor_info_t;
 
 typedef struct {
-	id_event_struct_header_t struct_header;
-	id_event_struct_data_t struct_data;
+	tcg_efi_spec_id_event_t struct_header;
+	tcg_vendor_info_t struct_data;
 } id_event_struct_t;
 
 typedef struct {
 	tcg_pcr_event_t header;
-	id_event_struct_header_t struct_header;
+	tcg_efi_spec_id_event_t struct_header;
 } id_event_headers_t;
 
 /* TPMT_HA Structure */
@@ -273,7 +273,7 @@ typedef struct {
 	 * the event data (or external data) for all active PCR banks
 	 */
 	tpml_digest_values digests; /* Digests */
-} event2_header_t;
+} __attribute__((packed)) event2_header_t;
 
 typedef struct event2_data {
 	/* The size of the event data */
