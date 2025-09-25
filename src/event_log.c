@@ -7,14 +7,19 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "debug.h"
+#include "digest.h"
 #include "event_log.h"
 #include "event_record.h"
 
 /* Running Event Log Pointer */
 static uint8_t *log_ptr;
+
+/* Pointer to the first byte of the Event Log buffer */
+static uint8_t *log_start;
 
 /* Pointer to the first byte past end of the Event Log buffer */
 static uintptr_t log_end;
@@ -287,6 +292,46 @@ int event_log_init(uint8_t *start, uint8_t *finish)
 
 	log_ptr = start;
 	log_end = (uintptr_t)finish;
+	log_start = start;
+
+	return 0;
+}
+
+int event_log_init_from_pos(uint8_t *start, uint8_t *finish, size_t pos)
+{
+	uint8_t *ptr = start;
+	int rc;
+
+	rc = event_log_init(start, finish);
+	if (rc < 0) {
+		return rc;
+	}
+
+	/*
+	 * If a prior cursor offset is provided, the first event in a TCG EFI log
+	 * should be the Spec ID event carried in ev->event[]. Probe for the "Spec
+	 * ID Event03" signature.
+	 */
+	if (pos > 0U) {
+		if (pos > (finish - start) ||
+		    pos < sizeof(struct tcg_efi_spec_id_event)) {
+			ERROR("Invalid cursor offset (%ld).\n", pos);
+			return -EINVAL;
+		}
+
+		ptr = ((tcg_pcr_event_t *)start)->event;
+		rc = memcmp(ptr, TCG_ID_EVENT_SIGNATURE_03,
+			    strlen(TCG_ID_EVENT_SIGNATURE_03));
+		if (rc != 0U) {
+			ERROR("Invalid SpecID header at base address %p.\n",
+			      log_start);
+			return -EINVAL;
+		}
+
+		spec_id_header = (tcg_efi_spec_id_event_t *)ptr;
+	}
+
+	log_ptr = start + pos;
 
 	return 0;
 }
@@ -437,10 +482,10 @@ int event_log_measure(uintptr_t data_base, uint32_t data_size,
 				      (void *)data_base, data_size, hash_data);
 }
 
-int event_log_init_and_reg(uint8_t *start, uint8_t *finish,
+int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
 			   const struct event_log_hash_info *hash_info)
 {
-	int rc = event_log_init(start, finish);
+	int rc = event_log_init_from_pos(start, finish, pos);
 	if (rc < 0) {
 		return rc;
 	}

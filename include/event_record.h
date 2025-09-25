@@ -26,10 +26,7 @@
 int event_log_buf_init(uint8_t *start, uint8_t *finish);
 
 /**
- * Initialize the Event Log subsystem.
- *
- * Wrapper around `event_log_buf_init()` to configure the memory range
- * for the Event Log buffer.
+ * Initialize the Event Log library.
  *
  * @param[in] start  Pointer to the start of the Event Log buffer.
  * @param[in] finish Pointer to the end of the buffer
@@ -38,6 +35,18 @@ int event_log_buf_init(uint8_t *start, uint8_t *finish);
  * @return 0 on success, or a negative error code on failure.
  */
 int event_log_init(uint8_t *start, uint8_t *finish);
+
+/**
+ * Initialize the Event Log library from a previous offset.
+ *
+ * @param[in] start  Pointer to the start of the Event Log buffer.
+ * @param[in] finish Pointer to the end of the buffer
+ *                             (i.e., one byte past the last valid address).
+ * @param[in] pos    Previous cursor position.
+ *
+ * @return 0 on success, or a negative error code on failure.
+ */
+int event_log_init_from_pos(uint8_t *start, uint8_t *finish, size_t pos);
 
 /**
  * Initialize the Event Log and register supported hash functions.
@@ -49,15 +58,17 @@ int event_log_init(uint8_t *start, uint8_t *finish);
  *
  * @param[in] start      Pointer to the beginning of the Event Log buffer.
  * @param[in] finish     Pointer to the end of the Event Log buffer.
+ * @param[in] pos        Previous cursor position.
  * @param[in] hash_info  Pointer to a structure containing the hash function
  *                       pointer and associated algorithm identifiers.
  *
  * @return 0 on success,
  *         -EEXIST if hash functions have already been registered,
- *         -EINVAL if the input parameters are invalid,
- *         or a negative error code from the underlying initialization logic.
+ *
+ * -EINVAL if the input parameters are invalid,
+ * or a negative error code from the underlying initialization logic.
  */
-int event_log_init_and_reg(uint8_t *start, uint8_t *finish,
+int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
 			   const struct event_log_hash_info *hash_info);
 
 /**
