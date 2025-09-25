@@ -24,46 +24,6 @@ static const struct event_log_hash_info *crypto_hash_info;
 
 static const tcg_efi_spec_id_event_t *spec_id_header;
 
-/* TCG_EfiSpecIdEvent */
-static const id_event_headers_t id_event_header = {
-	.header = { .pcr_index = PCR_0,
-		    .event_type = EV_NO_ACTION,
-		    .digest = { 0 },
-		    .event_size =
-			    (uint32_t)(sizeof(id_event_struct_t) +
-				       (sizeof(id_event_algorithm_size_t) *
-					HASH_ALG_COUNT)) },
-
-	.struct_header = { .signature = TCG_ID_EVENT_SIGNATURE_03,
-			   .platform_class = PLATFORM_CLASS_CLIENT,
-			   .spec_version_minor = TCG_SPEC_VERSION_MINOR_TPM2,
-			   .spec_version_major = TCG_SPEC_VERSION_MAJOR_TPM2,
-			   .spec_errata = TCG_SPEC_ERRATA_TPM2,
-			   .uintn_size = (uint8_t)(sizeof(unsigned int) /
-						   sizeof(uint32_t)),
-			   .number_of_algorithms = HASH_ALG_COUNT }
-};
-
-static const event2_header_t locality_event_header = {
-	/*
-	 * All EV_NO_ACTION events SHALL set
-	 * TCG_PCR_EVENT2.pcrIndex = 0, unless otherwise specified
-	 */
-	.pcr_index = PCR_0,
-
-	/*
-	 * All EV_NO_ACTION events SHALL set
-	 * TCG_PCR_EVENT2.eventType = 03h
-	 */
-	.event_type = EV_NO_ACTION,
-
-	/*
-	 * All EV_NO_ACTION events SHALL set TCG_PCR_EVENT2.digests to all
-	 * 0x00's for each allocated Hash algorithm
-	 */
-	.digests = { .count = HASH_ALG_COUNT }
-};
-
 /* Message digest algorithm */
 enum crypto_md_algo {
 	CRYPTO_MD_SHA256,
@@ -296,7 +256,7 @@ int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
 			(void)memcpy(dst_p, curr, tpmt_ha_digest_sz);
 
 			/* Increment to next digest location accounting for variable length digests. */
-			curr = (tpmt_ha *)((uint8_t *)curr + digest_size);
+			curr = (tpmt_ha *)((uint8_t *)curr + tpmt_ha_digest_sz);
 			dst_p += tpmt_ha_digest_sz;
 		}
 	}
@@ -331,99 +291,137 @@ int event_log_init(uint8_t *start, uint8_t *finish)
 	return 0;
 }
 
-int event_log_write_specid_event(void)
+int event_log_write_specid_event(const tpm_alg_id *algorithms,
+				 uint32_t algo_count,
+				 const uint8_t *vendor_info,
+				 uint8_t vendor_info_size)
 {
-	void *ptr;
+	tcg_pcr_event_t *pcr_event;
+	tcg_vendor_info_t *vendor_info_ptr;
+	size_t total_size;
+	int rc;
+	tcg_efi_spec_id_event_t *spec_id_ptr;
+	const tcg_efi_spec_id_event_t spec_id_event = {
+		.signature = TCG_ID_EVENT_SIGNATURE_03,
+		.platform_class = PLATFORM_CLASS_CLIENT,
+		.spec_version_minor = TCG_SPEC_VERSION_MINOR_TPM2,
+		.spec_version_major = TCG_SPEC_VERSION_MAJOR_TPM2,
+		.spec_errata = TCG_SPEC_ERRATA_TPM2,
+		.uintn_size =
+			(uint8_t)(sizeof(unsigned int) / sizeof(uint32_t)),
+	};
 
-	/* event_log_buf_init() must have been called prior to this. */
 	if (log_ptr == NULL) {
+		ERROR("Cannot call library function, initialization not completed.\n");
 		return -EFAULT;
 	}
 
-	if (((uintptr_t)log_ptr + ID_EVENT_SIZE) > log_end) {
+	if (algorithms == NULL || algo_count == 0U) {
+		ERROR("Invalid algorithm configuration.\n");
+		return -EINVAL;
+	}
+
+	pcr_event = (tcg_pcr_event_t *)log_ptr;
+
+	/* Prime with template header (PCR index, EV_NO_ACTION, signature, etc.) */
+	rc = event_log_write_pcr_event(PCR_0, EV_NO_ACTION, NULL,
+				       (uint8_t *)&spec_id_event,
+				       sizeof(spec_id_event));
+	if (rc != 0U) {
+		return rc;
+	}
+
+	/* Total bytes we will write into the log buffer for TCG_EfiSpecIDEvent. */
+	total_size = sizeof(tcg_efi_spec_id_event_t) +
+		     sizeof(id_event_algorithm_size_t) * algo_count +
+		     sizeof(tcg_vendor_info_t) + vendor_info_size;
+
+	spec_id_ptr = (tcg_efi_spec_id_event_t *)pcr_event->event;
+
+	/* Check buffer capacity for the entire record */
+	if (exceeds_bounds((uintptr_t)spec_id_ptr, total_size)) {
 		return -ENOMEM;
 	}
 
-	ptr = log_ptr;
+	/* TCG_EfiSpecIdEvent.DigestSize */
+	spec_id_ptr->number_of_algorithms = algo_count;
+	for (uint16_t i = 0; i < algo_count; i++) {
+		switch (algorithms[i]) {
+		case TPM_ALG_SHA256:
+			spec_id_ptr->digest_size[i].digest_size =
+				SHA256_DIGEST_SIZE;
+			break;
+		case TPM_ALG_SHA384:
+			spec_id_ptr->digest_size[i].digest_size =
+				SHA384_DIGEST_SIZE;
+			break;
+		case TPM_ALG_SHA512:
+			spec_id_ptr->digest_size[i].digest_size =
+				SHA512_DIGEST_SIZE;
+			break;
+		default:
+			ERROR("Unrecognized TPM algorithm ID %u",
+			      algorithms[i]);
+			return EINVAL;
+		}
+
+		spec_id_ptr->digest_size[i].algorithm_id = algorithms[i];
+	}
+
+	/* TCG_EfiSpecIdEvent.VendorInfo */
+	if (vendor_info_size > 0) {
+		vendor_info_ptr =
+			(tcg_vendor_info_t
+				 *)(spec_id_ptr->digest_size +
+				    sizeof(id_event_algorithm_size_t) *
+					    algo_count);
+
+		vendor_info_ptr->vendor_info_size = vendor_info_size;
+
+		if (vendor_info == NULL) {
+			ERROR("Invalid VendorInfo buffer.\n");
+			return -EINVAL;
+		}
+
+		(void)memcpy(vendor_info_ptr->vendor_info, vendor_info,
+			     vendor_info_size);
+	}
 
 	/*
-	 * Add Specification ID Event first
-	 *
-	 * Copy TCG_EfiSpecIDEventStruct structure header
+	 * Stash the TCG_EfiSpecIdEvent for later to enable discovery of supported
+	 * algorithms.
 	 */
-	(void)memcpy(ptr, (const void *)&id_event_header,
-		     sizeof(id_event_header));
-	ptr = (uint8_t *)((uintptr_t)ptr + sizeof(id_event_header));
+	spec_id_header = spec_id_ptr;
 
-	/* TCG_EfiSpecIdEventAlgorithmSize structure */
-	((id_event_algorithm_size_t *)ptr)->algorithm_id = TPM_ALG_ID;
-	((id_event_algorithm_size_t *)ptr)->digest_size = TCG_DIGEST_SIZE;
-	ptr = (uint8_t *)((uintptr_t)ptr + sizeof(id_event_algorithm_size_t));
-
-	/*
-	 * TCG_EfiSpecIDEventStruct.vendorInfoSize
-	 * No vendor data
-	 */
-	((tcg_vendor_info_t *)ptr)->vendor_info_size = 0;
-	log_ptr = (uint8_t *)((uintptr_t)ptr +
-			      offsetof(tcg_vendor_info_t, vendor_info));
+	pcr_event->event_size = total_size;
+	log_ptr = (uint8_t *)spec_id_ptr + total_size;
 
 	return 0;
 }
 
-int event_log_write_header(void)
+int event_log_write_header(const tpm_alg_id *algorithms, uint32_t algo_count,
+			   uint8_t locality, const uint8_t *vendor_info,
+			   uint8_t vendor_info_size)
 {
-	const char locality_signature[] = TCG_STARTUP_LOCALITY_SIGNATURE;
-	void *ptr;
+	startup_locality_event_t startup_locality = {
+		TCG_STARTUP_LOCALITY_SIGNATURE, locality
+	};
 	int rc;
 
-	rc = event_log_write_specid_event();
-	if (rc < 0) {
+	rc = event_log_write_specid_event(algorithms, algo_count, vendor_info,
+					  vendor_info_size);
+	if (rc != 0) {
+		ERROR("Failed to write SpecID event: %d\n", rc);
 		return rc;
 	}
 
-	if (((uintptr_t)log_ptr + LOC_EVENT_SIZE) > log_end) {
-		return -ENOMEM;
+	rc = event_log_write_pcr_event2(PCR_0, EV_NO_ACTION, NULL,
+					(uint8_t *)&startup_locality,
+					sizeof(startup_locality_event_t));
+	if (rc != 0) {
+		ERROR("Failed to write startup locality: %d\n", rc);
+		return rc;
 	}
-
-	ptr = log_ptr;
-
-	/*
-	 * The Startup Locality event should be placed in the log before
-	 * any event which extends PCR[0].
-	 *
-	 * Ref. TCG PC Client Platform Firmware Profile 9.4.5.3
-	 */
-
-	/* Copy Startup Locality Event Header */
-	(void)memcpy(ptr, (const void *)&locality_event_header,
-		     sizeof(locality_event_header));
-	ptr = (uint8_t *)((uintptr_t)ptr + sizeof(locality_event_header));
-
-	/* TCG_PCR_EVENT2.Digests[].AlgorithmId */
-	((tpmt_ha *)ptr)->algorithm_id = TPM_ALG_ID;
-
-	/* TCG_PCR_EVENT2.Digests[].Digest[] */
-	(void)memset(&((tpmt_ha *)ptr)->digest, 0, TCG_DIGEST_SIZE);
-	ptr = (uint8_t *)((uintptr_t)ptr + offsetof(tpmt_ha, digest) +
-			  TCG_DIGEST_SIZE);
-
-	/* TCG_PCR_EVENT2.EventSize */
-	((event2_data_t *)ptr)->event_size =
-		(uint32_t)sizeof(startup_locality_event_t);
-	ptr = (uint8_t *)((uintptr_t)ptr + offsetof(event2_data_t, event));
-
-	/* TCG_EfiStartupLocalityEvent.Signature */
-	(void)memcpy(ptr, (const void *)locality_signature,
-		     sizeof(TCG_STARTUP_LOCALITY_SIGNATURE));
-
-	/*
-	 * TCG_EfiStartupLocalityEvent.StartupLocality = 0:
-	 * the platform's boot firmware
-	 */
-	((startup_locality_event_t *)ptr)->startup_locality = 0U;
-	log_ptr =
-		(uint8_t *)((uintptr_t)ptr + sizeof(startup_locality_event_t));
 
 	return 0;
 }

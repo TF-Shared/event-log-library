@@ -119,25 +119,52 @@ int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 				      uint32_t event_data_size);
 
 /**
- * Initialize the Event Log with mandatory header events.
+ * @brief Initialize the Event Log with mandatory header events.
  *
  * Writes the Specification ID (SpecID) and Startup Locality events
  * as required by the TCG PC Client Platform Firmware Profile.
  * These must be the first entries in the Event Log.
  *
- * @return 0 on success, or a negative error code on failure.
+ * @param[in] algorithms       Pointer to array of digest algorithm descriptors.
+ * @param[in] algo_count       Number of elements in @p algorithms.
+ * @param[in] locality         Startup locality value (0–4).
+ * @param[in] vendor_info      Pointer to vendor-specific information.
+ * @param[in] vendor_info_size Size of vendor-specific information in bytes.
+ *
+ * @return 0 on success, negative on error.
+ *
+ * @retval -EINVAL  If arguments are invalid (e.g., null pointer or size mismatch).
+ * @retval -ENOMEM  If memory allocation fails while writing the header.
+ *
+ * @note This function must be called before any PCR events are written
+ *       to the Event Log. The SpecID and Startup Locality events are
+ *       always the first log entries.
  */
-int event_log_write_header(void);
+int event_log_write_header(const tpm_alg_id *algorithms, uint32_t algo_count,
+			   uint8_t locality, const uint8_t *vendor_info,
+			   uint8_t vendor_info_size);
 
 /**
- * Write the SpecID event to the Event Log.
+ * @brief Write the SpecID event to the Event Log.
  *
- * Records the TCG_EfiSpecIDEventStruct to declare the structure
- * and supported algorithms of the Event Log format.
+ * Records a @ref TCG_EfiSpecIDEventStruct that declares the event log
+ * format and the hashing algorithms supported by the platform.
  *
- * @return 0 on success, or a negative error code on failure.
+ * @param[in] algorithms       Array of supported algorithm identifiers and digest sizes.
+ * @param[in] algo_count       Number of entries in the @p algorithms array.
+ * @param[in] vendor_info      Pointer to vendor-specific information.
+ * @param[in] vendor_info_size Size of @p vendor_info in bytes.
+ *
+ * @return 0 on success, negative on error.
+ *
+ * @note The SpecID event is the first event in a crypto-agile event log
+ *       (TPM 2.0). It describes the log format and must be recorded before
+ *       any PCR events.
  */
-int event_log_write_specid_event(void);
+int event_log_write_specid_event(const tpm_alg_id *algorithms,
+				 uint32_t algo_count,
+				 const uint8_t *vendor_info,
+				 uint8_t vendor_info_size);
 
 /**
  * Get the current size of the Event Log.

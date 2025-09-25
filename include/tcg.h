@@ -54,6 +54,9 @@
 #define EV_EFI_HCRTM_EVENT 0x80000010U
 #define EV_EFI_VARIABLE_AUTHORITY 0x800000E0U
 
+/* Table 7 - TPM_ALG_ID */
+typedef uint16_t tpm_alg_id;
+
 /*
  * TPM_ALG_ID constants.
  * Ref. Table 9 - Definition of (UINT16) TPM_ALG_ID Constants
@@ -145,7 +148,7 @@ typedef struct {
  */
 typedef struct {
 	/* Algorithm ID (hashAlg) of the Hash used by BIOS */
-	uint16_t algorithm_id;
+	tpm_alg_id algorithm_id;
 
 	/* The size of the digest produced by the implemented Hash algorithm */
 	uint16_t digest_size;
@@ -232,16 +235,6 @@ typedef struct {
 	 */
 	uint8_t vendor_info[]; /* [vendorInfoSize] */
 } tcg_vendor_info_t;
-
-typedef struct {
-	tcg_efi_spec_id_event_t struct_header;
-	tcg_vendor_info_t struct_data;
-} id_event_struct_t;
-
-typedef struct {
-	tcg_pcr_event_t header;
-	tcg_efi_spec_id_event_t struct_header;
-} id_event_headers_t;
 
 /* TPMT_HA Structure */
 typedef struct {
