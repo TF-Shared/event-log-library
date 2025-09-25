@@ -113,14 +113,18 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	unsigned int i;
 	uint8_t info_size, *info_size_ptr;
 	void *ptr = *log_addr;
-	id_event_headers_t *event = (id_event_headers_t *)ptr;
+	tcg_pcr_event_t *pcr_event = (tcg_pcr_event_t *)ptr;
+	tcg_efi_spec_id_event_t *event =
+		(tcg_efi_spec_id_event_t *)pcr_event->event;
 	id_event_algorithm_size_t *alg_ptr;
 	uint32_t event_size, number_of_algorithms;
 	size_t digest_len;
 	const uint8_t *end_ptr = (uint8_t *)((uintptr_t)*log_addr + *log_size);
 	const struct event_log_algorithm *algo_info;
+	uint8_t *next;
 
-	if (*log_size < sizeof(id_event_headers_t)) {
+	if (*log_size <
+	    sizeof(tcg_pcr_event_t) + sizeof(tcg_efi_spec_id_event_t)) {
 		return -EINVAL;
 	}
 
@@ -129,38 +133,34 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	 * Event content defined as TCG_EfiSpecIDEventStruct.
 	 */
 	NOTICE("TCG_EfiSpecIDEvent:\n");
-	NOTICE("  PCRIndex           : %u\n", event->header.pcr_index);
-	if (event->header.pcr_index != (uint32_t)PCR_0) {
+	NOTICE("  PCRIndex           : %u\n", pcr_event->pcr_index);
+	if (pcr_event->pcr_index != (uint32_t)PCR_0) {
 		return -EINVAL;
 	}
 
-	NOTICE("  EventType          : %u\n", event->header.event_type);
-	if (event->header.event_type != EV_NO_ACTION) {
+	NOTICE("  EventType          : %u\n", pcr_event->event_type);
+	if (pcr_event->event_type != EV_NO_ACTION) {
 		return -EINVAL;
 	}
 
-	event_log_print_digest(event->header.digest,
-			       sizeof(event->header.digest));
+	event_log_print_digest(pcr_event->digest, sizeof(pcr_event->digest));
 
 	/* EventSize */
-	event_size = event->header.event_size;
+	event_size = pcr_event->event_size;
 	NOTICE("  EventSize          : %u\n", event_size);
 
-	NOTICE("  Signature          : %s\n", event->struct_header.signature);
-	NOTICE("  PlatformClass      : %u\n",
-	       event->struct_header.platform_class);
-	NOTICE("  SpecVersion        : %u.%u.%u\n",
-	       event->struct_header.spec_version_major,
-	       event->struct_header.spec_version_minor,
-	       event->struct_header.spec_errata);
-	NOTICE("  UintnSize          : %u\n", event->struct_header.uintn_size);
+	NOTICE("  Signature          : %s\n", event->signature);
+	NOTICE("  PlatformClass      : %u\n", event->platform_class);
+	NOTICE("  SpecVersion        : %u.%u.%u\n", event->spec_version_major,
+	       event->spec_version_minor, event->spec_errata);
+	NOTICE("  UintnSize          : %u\n", event->uintn_size);
 
 	/* NumberOfAlgorithms */
-	number_of_algorithms = event->struct_header.number_of_algorithms;
+	number_of_algorithms = event->number_of_algorithms;
 	NOTICE("  NumberOfAlgorithms : %u\n", number_of_algorithms);
 
 	/* Address of DigestSizes[] */
-	alg_ptr = event->struct_header.digest_size;
+	alg_ptr = event->digest_size;
 
 	/* Size of DigestSizes[] */
 	digest_len = number_of_algorithms * sizeof(id_event_algorithm_size_t);
@@ -193,57 +193,45 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 	info_size = *info_size_ptr++;
 	NOTICE("  VendorInfoSize     : %u\n", info_size);
 
-	/* Check VendorInfo end address */
-	if (((uintptr_t)info_size_ptr + info_size) > (uintptr_t)end_ptr) {
+	/* Check VendorInfo */
+	if ((((uintptr_t)info_size_ptr + info_size) > (uintptr_t)end_ptr)) {
 		return -EFAULT;
 	}
 
 	/* Check EventSize */
 	if (event_size !=
-	    (sizeof(id_event_struct_t) + digest_len + info_size)) {
+	    (sizeof(tcg_efi_spec_id_event_t) + sizeof(tcg_vendor_info_t) +
+	     info_size + digest_len)) {
 		return -EFAULT;
-	}
+	};
 
 	event_log_print_spaced_hex(info_size_ptr, info_size,
 				   "  VendorInfo         : ");
 
-	*log_size -= (uintptr_t)info_size_ptr - (uintptr_t)*log_addr;
-	*log_addr = info_size_ptr;
+	next = info_size_ptr + info_size;
+
+	*log_size -= (size_t)(next - *log_addr);
+	*log_addr = next;
 
 	return 0;
 }
 
-/**
- * Print a TCG_PCR_EVENT2 entry from the event log.
- *
- * This function extracts and prints a TCG_PCR_EVENT2 structure
- * from the event log for debugging or auditing purposes.
- *
- * @param[in,out] log_addr  Pointer to the current position in the Event Log.
- *                          Updated to the next entry after processing.
- * @param[in,out] log_size  Pointer to the remaining Event Log size.
- *                          Updated to reflect the remaining bytes.
- *
- * @return 0 on success, or a negative error code on failure.
- */
-static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
+int event_log_print_pcr_event2(uint8_t **log_addr, const uint8_t *log_end)
 {
 	uint32_t event_size, count;
-	void *ptr = *log_addr;
 	const struct event_log_algorithm *algo_info;
-	const uint8_t *end_ptr = (uint8_t *)((uintptr_t)*log_addr + *log_size);
+	event2_header_t *pcr_event = (event2_header_t *)*log_addr;
+	uint8_t *ptr;
 
-	if (*log_size < sizeof(event2_header_t)) {
-		return -EINVAL;
+	if (*log_addr > log_end - sizeof(event2_header_t)) {
+		return -EFAULT;
 	}
 
 	NOTICE("PCR_Event2:\n");
-	NOTICE("  PCRIndex           : %u\n",
-	       ((event2_header_t *)ptr)->pcr_index);
-	NOTICE("  EventType          : %u\n",
-	       ((event2_header_t *)ptr)->event_type);
+	NOTICE("  PCRIndex           : %u\n", pcr_event->pcr_index);
+	NOTICE("  EventType          : %u\n", pcr_event->event_type);
 
-	count = ((event2_header_t *)ptr)->digests.count;
+	count = pcr_event->digests.count;
 	if (count < 1U) {
 		NOTICE("Invalid Digests Count      : %u\n", count);
 		return -EINVAL;
@@ -252,74 +240,71 @@ static int event_log_print_pcr_event2(uint8_t **log_addr, size_t *log_size)
 	NOTICE("  Digests Count      : %u\n", count);
 
 	/* Address of TCG_PCR_EVENT2.Digests[] */
-	ptr = (uint8_t *)ptr + sizeof(event2_header_t);
-	if ((uintptr_t)ptr > (uintptr_t)end_ptr) {
-		return -EFAULT;
-	}
+	ptr = (uint8_t *)pcr_event + sizeof(event2_header_t);
 
-	for (unsigned int i = 0U; i < count; ++i) {
+	for (size_t i = 0U; i < count; ++i) {
 		/* Check AlgorithmId address */
-		if (((uintptr_t)ptr + offsetof(tpmt_ha, digest)) >
-		    (uintptr_t)end_ptr) {
-			return -EFAULT;
-		}
-
 		algo_info = event_log_algorithm_lookup(
 			((tpmt_ha *)ptr)->algorithm_id);
 
 		if (algo_info == NULL) {
-			ERROR("    #%u AlgorithmId   : %d (unknown)\n", i,
+			ERROR("    #%zu AlgorithmId   : %d (unknown)\n", i,
 			      ((tpmt_ha *)ptr)->algorithm_id);
 			return -ENOENT;
 		}
 
-		NOTICE("    #%u AlgorithmId   : %s\n", i, algo_info->name);
+		NOTICE("    #%zu AlgorithmId   : %s\n", i, algo_info->name);
 
-		/* End of Digest[] */
-		ptr = (uint8_t *)((uintptr_t)ptr + offsetof(tpmt_ha, digest));
-		if (((uintptr_t)ptr + algo_info->size) > (uintptr_t)end_ptr) {
+		if (ptr + offsetof(tpmt_ha, digest) + algo_info->size >
+		    log_end) {
 			return -EFAULT;
 		}
 
+		ptr += offsetof(tpmt_ha, digest);
 		event_log_print_digest(ptr, algo_info->size);
+
+		/* End of Digest[] */
 		ptr += algo_info->size;
 	}
 
-	/* TCG_PCR_EVENT2.EventSize */
-	if (((uintptr_t)ptr + offsetof(event2_data_t, event)) >
-	    (uintptr_t)end_ptr) {
+	if (ptr + sizeof(uint32_t) > log_end) {
 		return -EFAULT;
 	}
 
 	event_size = ((event2_data_t *)ptr)->event_size;
 	NOTICE("  EventSize          : %u\n", event_size);
 
-	/* Address of TCG_PCR_EVENT2.Event[EventSize] */
-	ptr = (uint8_t *)((uintptr_t)ptr + offsetof(event2_data_t, event));
-
-	/* End of TCG_PCR_EVENT2.Event[EventSize] */
-	if (((uintptr_t)ptr + event_size) > (uintptr_t)end_ptr) {
+	if (ptr + offsetof(event2_data_t, event) + event_size > log_end) {
 		return -EFAULT;
 	}
 
-	if ((event_size == sizeof(startup_locality_event_t)) &&
-	    (strcmp((const char *)ptr, TCG_STARTUP_LOCALITY_SIGNATURE) == 0)) {
-		NOTICE("  Signature          : %s\n",
-		       ((startup_locality_event_t *)ptr)->signature);
-		NOTICE("  StartupLocality    : %u\n",
-		       ((startup_locality_event_t *)ptr)->startup_locality);
-	} else {
-		NOTICE("  Event              : %s\n", (uint8_t *)ptr);
+	ptr += offsetof(event2_data_t, event);
+
+	if (event_size > 0U) {
+		/* End of TCG_PCR_EVENT2.Event[EventSize] */
+		if ((event_size == sizeof(startup_locality_event_t)) &&
+		    (memcmp(ptr, TCG_STARTUP_LOCALITY_SIGNATURE,
+			    sizeof(((startup_locality_event_t *)ptr)
+					   ->signature))) == 0) {
+			NOTICE("  Signature          : %s\n",
+			       ((startup_locality_event_t *)ptr)->signature);
+			NOTICE("  StartupLocality    : %u\n",
+			       ((startup_locality_event_t *)ptr)
+				       ->startup_locality);
+		} else {
+			NOTICE("  Event              : %s\n", ptr);
+		}
 	}
 
-	*log_size -= (uintptr_t)ptr + event_size - (uintptr_t)*log_addr;
-	*log_addr = (uint8_t *)ptr + event_size;
+	ptr += event_size;
+	*log_addr = ptr;
 
 	return 0;
 }
 
 int event_log_dump(uint8_t *log_addr, size_t log_size)
 {
+	const uint8_t *log_end = log_addr + log_size;
 	int rc;
 
 	if (log_addr == NULL) {
@@ -333,8 +318,9 @@ int event_log_dump(uint8_t *log_addr, size_t log_size)
 		return rc;
 	}
 
-	while (log_size != 0U) {
-		rc = event_log_print_pcr_event2(&log_addr, &log_size);
+	while (log_addr < log_end) {
+		rc = event_log_print_pcr_event2(&log_addr, log_end);
+
 		if (rc < 0) {
 			return rc;
 		}
