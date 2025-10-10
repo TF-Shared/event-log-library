@@ -22,21 +22,6 @@
 
 #define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
 
-typedef struct {
-	unsigned int id;
-	const char *name;
-	unsigned int pcr;
-} event_log_metadata_t;
-
-typedef int (*evlog_hash_func_t)(uint32_t alg, void *data, unsigned int len,
-				 uint8_t *digest);
-
-struct event_log_hash_info {
-	evlog_hash_func_t func;
-	const uint32_t *ids;
-	size_t count;
-};
-
 struct event_log_algorithm {
 	uint16_t id;
 	const char *name;

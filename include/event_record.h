@@ -49,29 +49,6 @@ int event_log_init(uint8_t *start, uint8_t *finish);
 int event_log_init_from_pos(uint8_t *start, uint8_t *finish, size_t pos);
 
 /**
- * Initialize the Event Log and register supported hash functions.
- *
- * Initializes the Event Log subsystem using the provided memory region
- * and registers one or more cryptographic hash functions for use in
- * event measurements. This function must be called before any measurements
- * or event recording can take place.
- *
- * @param[in] start      Pointer to the beginning of the Event Log buffer.
- * @param[in] finish     Pointer to the end of the Event Log buffer.
- * @param[in] pos        Previous cursor position.
- * @param[in] hash_info  Pointer to a structure containing the hash function
- *                       pointer and associated algorithm identifiers.
- *
- * @return 0 on success,
- *         -EEXIST if hash functions have already been registered,
- *
- * -EINVAL if the input parameters are invalid,
- * or a negative error code from the underlying initialization logic.
- */
-int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
-			   const struct event_log_hash_info *hash_info);
-
-/**
  * @brief Write a PCR event with multiple digests.
  *
  * @param[in] pcr_index        PCR index of the event.
