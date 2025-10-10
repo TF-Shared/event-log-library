@@ -19,11 +19,7 @@ typedef struct {
 typedef int (*evlog_hash_func_t)(uint32_t alg, void *data, unsigned int len,
 				 uint8_t *digest);
 
-struct event_log_hash_info {
-	evlog_hash_func_t func;
-	const uint32_t *ids;
-	size_t count;
-};
+#define EVLOG_INVALID_ID UINT32_MAX
 
 /**
  * Initialize the Event Log and register supported hash functions.
@@ -36,50 +32,50 @@ struct event_log_hash_info {
  * @param[in] start      Pointer to the beginning of the Event Log buffer.
  * @param[in] finish     Pointer to the end of the Event Log buffer.
  * @param[in] pos        Previous cursor position.
- * @param[in] hash_info  Pointer to a structure containing the hash function
+ * @param[in] hash_func  Pointer to a structure containing the hash function
  *                       pointer and associated algorithm identifiers.
- *
- * @return 0 on success,
- *         -EEXIST if hash functions have already been registered,
- *
- * -EINVAL if the input parameters are invalid,
- * or a negative error code from the underlying initialization logic.
- */
-int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
-			   const struct event_log_hash_info *hash_info);
-
-/**
- * Measure input data and log its hash to the Event Log.
- *
- * Computes the cryptographic hash of the specified data and records it
- * in the Event Log as a TCG_PCR_EVENT2 structure using event type EV_POST_CODE.
- * Useful for firmware or image attestation.
- *
- * @param[in] data_base     Pointer to the base of the data to be measured.
- * @param[in] data_size     Size of the data in bytes.
- * @param[in] data_id       Identifier used to match against metadata.
- * @param[in] metadata_ptr  Pointer to an array of event_log_metadata_t.
  *
  * @return 0 on success, or a negative error code on failure.
  */
-int event_log_measure_and_record(uintptr_t data_base, uint32_t data_size,
-				 uint32_t data_id,
-				 const event_log_metadata_t *metadata_ptr);
+int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
+			   evlog_hash_func_t hash_func);
 
 /**
- * Measure the input data and return its hash.
+ * @brief Measure a memory region and record a TCG event.
  *
- * Computes the cryptographic hash of the specified memory region using
- * the default hashing algorithm configured in the Event Log subsystem.
+ * Computes one or more cryptographic digests over the byte range
+ * [data_base, data_base + data_size) using the library's currently
+ * configured digest algorithm set, then appends an event to the
+ * platform event log associated with PCR @p pcr. The event payload is
+ * the caller-provided @p event_data buffer (copied as-is).
  *
- * @param[in]  data_base  Pointer to the base of the data to be measured.
- * @param[in]  data_size  Size of the data in bytes.
- * @param[out] hash_data  Buffer to hold the resulting hash output
- *                        (must be at least CRYPTO_MD_MAX_SIZE bytes).
+ * @param[in] data_base        Pointer to the base of the data to be measured.
+ * @param[in] data_size        Size of the data in bytes.
+ * @param[in] data_id          Identifier used to match against metadata.
+ * @param[in] event_data       Pointer to event data.
+ * @param[in] event_data_size  Size of event data in bytes.
+ *
+ * @return 0 on success, or a negative error code on failure.
+ */
+int event_log_measure_and_record(uint32_t pcr, uintptr_t data_base,
+				 uint32_t data_size, const void *event_data,
+				 size_t event_data_size);
+
+/**
+ * @brief Compute a cryptographic hash of a memory region.
+ *
+ * Hashes the byte range [data_base, data_base + data_size) using the
+ * configured digest algorithms using a user specified cryptographic backend,
+ * and writes the resulting digest to @p hash_buf.
+ *
+ * @param[in]  data_base      Pointer to the base of the data to be measured.
+ * @param[in]  data_size      Size of the data in bytes.
+ * @param[out] hash_buf       Buffer to hold the resulting hash output
+ * @param[in]  hash_buf_size  Size of the hash buffer in bytes.
  *
  * @return 0 on success, or an error code on failure.
  */
-int event_log_measure(uintptr_t data_base, uint32_t data_size,
-		      unsigned char *hash_data);
+int event_log_measure(uintptr_t data_base, size_t data_size, uint8_t *hash_buf,
+		      size_t hash_buf_size);
 
 #endif /* EVENT_MEASURE_H */

@@ -15,6 +15,7 @@
 #include "event_log.h"
 #include "event_measure.h"
 #include "event_record.h"
+#include "tcg.h"
 
 /* Running Event Log Pointer */
 static uint8_t *log_ptr;
@@ -26,16 +27,9 @@ static uint8_t *log_start;
 static uintptr_t log_end;
 
 /* Hash function for event log operations set by user. */
-static const struct event_log_hash_info *crypto_hash_info;
+static evlog_hash_func_t event_log_hash_func;
 
 static const tcg_efi_spec_id_event_t *spec_id_header;
-
-/* Message digest algorithm */
-enum crypto_md_algo {
-	CRYPTO_MD_SHA256,
-	CRYPTO_MD_SHA384,
-	CRYPTO_MD_SHA512,
-};
 
 /* size lookup from your spec_id_header table */
 static inline uint16_t digest_size_for_alg(uint16_t alg)
@@ -451,61 +445,100 @@ int event_log_write_header(const tpm_alg_id *algorithms, uint32_t algo_count,
 	return 0;
 }
 
-int event_log_measure(uintptr_t data_base, uint32_t data_size,
-		      unsigned char *hash_data)
+int event_log_measure(uintptr_t data_base, size_t data_size, uint8_t *hash_buf,
+		      size_t hash_buf_size)
 {
-	if (crypto_hash_info == NULL) {
+	int rc;
+	uint8_t *digest_buf;
+	uint8_t *hash_buf_end = hash_buf + hash_buf_size;
+	const id_event_algorithm_size_t *event_log_algo;
+
+	if (event_log_hash_func == NULL) {
+		ERROR("No hash function registered for measurement.\n");
 		return -EINVAL;
 	}
 
-	return crypto_hash_info->func(crypto_hash_info->ids[0],
-				      (void *)data_base, data_size, hash_data);
+	if (hash_buf == NULL || hash_buf_size == sizeof(tpml_digest_values)) {
+		ERROR("Invalid hash buffer or insufficient space.\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * Write the digest count into hash buffer, the buffer should have
+	 * sufficient space to hold the count and count * sizeof(tpmt_ha)
+	 * digests.
+	 */
+	((tpml_digest_values *)hash_buf)->count =
+		spec_id_header->number_of_algorithms;
+	digest_buf =
+		(uint8_t *)hash_buf + offsetof(tpml_digest_values, digests);
+
+	for (size_t i = 0; i < spec_id_header->number_of_algorithms; i++) {
+		event_log_algo = &spec_id_header->digest_size[i];
+		assert(event_log_algo->digest_size != 0U);
+
+		if (digest_buf > hash_buf_end - (sizeof(tpmt_ha) +
+						 event_log_algo->digest_size)) {
+			ERROR("Not enough memory in allocated hash buffer.\n");
+			return -ENOMEM;
+		}
+
+		((tpmt_ha *)digest_buf)->algorithm_id =
+			event_log_algo->algorithm_id;
+
+		rc = event_log_hash_func(((tpmt_ha *)digest_buf)->algorithm_id,
+					 (void *)data_base, data_size,
+					 ((tpmt_ha *)digest_buf)->digest);
+		if (rc < 0) {
+			ERROR("Image measurement failed (%d).\n", rc);
+			return rc;
+		}
+
+		digest_buf += sizeof(tpmt_ha) + event_log_algo->digest_size;
+	}
+
+	return 0;
 }
 
 int event_log_init_and_reg(uint8_t *start, uint8_t *finish, size_t pos,
-			   const struct event_log_hash_info *hash_info)
+			   evlog_hash_func_t hash_func)
 {
 	int rc = event_log_init_from_pos(start, finish, pos);
 	if (rc < 0) {
 		return rc;
 	}
 
-	if (hash_info == NULL || hash_info->func == NULL ||
-	    hash_info->count == 0U || hash_info->count > HASH_ALG_COUNT) {
-		return -EINVAL;
+	if (hash_func == NULL) {
+		WARN("No hash backend provided, skipping registration.\n");
+	} else {
+		event_log_hash_func = hash_func;
 	}
 
-	crypto_hash_info = hash_info;
 	return 0;
 }
 
-int event_log_measure_and_record(uintptr_t data_base, uint32_t data_size,
-				 uint32_t data_id,
-				 const event_log_metadata_t *metadata_ptr)
+int event_log_measure_and_record(uint32_t pcr, uintptr_t data_base,
+				 uint32_t data_size, const void *event_data,
+				 size_t event_data_size)
 {
-	unsigned char hash_data[MAX_DIGEST_SIZE];
+	uint8_t hash_buf[MAX_TPML_BUFFER_SIZE];
 	int rc;
 
-	if (metadata_ptr == NULL) {
+	if (log_ptr == NULL || spec_id_header == NULL) {
+		ERROR("Cannot call library function, initialization not completed.\n");
 		return -EINVAL;
 	}
 
-	/* Get the metadata associated with this image. */
-	while (metadata_ptr->id != data_id) {
-		if (metadata_ptr->id == EVLOG_INVALID_ID) {
-			return -EINVAL;
-		}
-
-		metadata_ptr++;
-	}
-
 	/* Measure the payload with algorithm selected by EventLog driver */
-	rc = event_log_measure(data_base, data_size, hash_data);
+	rc = event_log_measure(data_base, data_size, hash_buf,
+			       sizeof(hash_buf));
 	if (rc != 0) {
 		return rc;
 	}
 
-	rc = event_log_record(hash_data, EV_POST_CODE, metadata_ptr);
+	rc = event_log_write_pcr_event2(pcr, EV_POST_CODE,
+					(const tpml_digest_values *)hash_buf,
+					event_data, event_data_size);
 	if (rc != 0) {
 		return rc;
 	}

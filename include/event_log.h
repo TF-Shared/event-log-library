@@ -10,15 +10,24 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "sha_common_macros.h"
 #include <tcg.h>
 
 /* Number of hashing algorithms supported */
+#ifndef MAX_HASH_COUNT
 #define HASH_ALG_COUNT 1U
-
-#define EVLOG_INVALID_ID UINT32_MAX
+#else
+#define HASH_ALG_COUNT MAX_HASH_COUNT
+#endif /* !HASH_ALG_COUNT */
 
 /* Maximum digest size based on the strongest hash algorithm i.e. SHA-512. */
-#define MAX_DIGEST_SIZE 64U
+#ifndef MAX_DIGEST_SIZE
+#define MAX_DIGEST_SIZE SHA512_DIGEST_SIZE
+#endif /* !MAX_DIGEST_SIZE */
+
+#define MAX_TPML_BUFFER_SIZE          \
+	(sizeof(tpml_digest_values) + \
+	 (HASH_ALG_COUNT * (sizeof(tpmt_ha) + MAX_DIGEST_SIZE)))
 
 #define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
 

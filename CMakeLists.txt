@@ -37,21 +37,19 @@ add_compile_definitions(EVLOG_LOG_LEVEL=${LOG_LEVEL})
 set(DEBUG_BACKEND_HEADER "log_backend_tf.h" CACHE STRING "Path to debug backend header")
 add_compile_definitions(DEBUG_BACKEND_HEADER="${DEBUG_BACKEND_HEADER}")
 
-if(HASH_ALGORITHM STREQUAL "SHA512")
-    add_compile_definitions(TPM_ALG_ID=TPM_ALG_SHA512)
-    add_compile_definitions(TCG_DIGEST_SIZE=64U)
-elseif(HASH_ALGORITHM STREQUAL "SHA384")
-    add_compile_definitions(TPM_ALG_ID=TPM_ALG_SHA384)
-    add_compile_definitions(TCG_DIGEST_SIZE=48U)
-else()
-    add_compile_definitions(TPM_ALG_ID=TPM_ALG_SHA256)
-    add_compile_definitions(TCG_DIGEST_SIZE=32U)
-endif()
+# Allow user to set values from the command line
+set(MAX_HASH_COUNT 24 CACHE STRING "Maximum number of hashes")
+set(MAX_DIGEST_SIZE 64 CACHE STRING "Maximum digest length")
 
 add_library(eventlog STATIC
     ${PROJECT_SOURCE_DIR}/src/event_log.c
     ${PROJECT_SOURCE_DIR}/src/event_print.c
     ${PROJECT_SOURCE_DIR}/src/digest.c
+)
+
+target_compile_definitions(eventlog PRIVATE
+	MAX_HASH_COUNT=${MAX_HASH_COUNT}
+	MAX_DIGEST_SIZE=${MAX_DIGEST_SIZE}
 )
 
 target_include_directories(eventlog PUBLIC
