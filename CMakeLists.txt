@@ -7,7 +7,6 @@
 cmake_minimum_required(VERSION 3.15)
 
 project(libeventlog VERSION 0.9 LANGUAGES C CXX ASM)
-
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 set(CMAKE_C_EXTENSIONS TRUE)
 
@@ -55,8 +54,54 @@ add_library(eventlog STATIC
     ${PROJECT_SOURCE_DIR}/src/digest.c
 )
 
-target_include_directories(eventlog PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(eventlog PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 target_include_directories(eventlog PRIVATE ${CMAKE_SOURCE_DIR}/include/private)
 
-target_link_libraries(eventlog PUBLIC cxx_compiler_flags)
+target_link_libraries(eventlog PUBLIC
+    $<BUILD_INTERFACE:cxx_compiler_flags>
+)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS eventlog
+    EXPORT eventLogTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "private" EXCLUDE
+)
+
+install(EXPORT eventLogTargets
+    FILE eventLogTargets.cmake
+    NAMESPACE eventlog::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/eventlog
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/eventLogConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${PROJECT_SOURCE_DIR}/cmake/eventLogConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/eventLogConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/eventlog
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/eventLogConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/eventLogConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/eventlog
+)
