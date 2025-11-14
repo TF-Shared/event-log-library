@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) 2026, Arm Limited. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+#ifndef EVENT_LOG_CONFIG_DEF_H
+#define EVENT_LOG_CONFIG_DEF_H
+
+#if defined(MAX_DIGEST_SIZE) && (MAX_DIGEST_SIZE != @MAX_DIGEST_SIZE_INT@)
+#error "MAX_DIGEST_SIZE mismatch with libeventlog build configuration"
+#endif
+#ifndef MAX_DIGEST_SIZE
+#if defined(__ASSEMBLER__)
+#define MAX_DIGEST_SIZE @MAX_DIGEST_SIZE_INT@
+#else
+#define MAX_DIGEST_SIZE @MAX_DIGEST_SIZE_INT@U
+#endif
+#endif
+
+#if defined(MAX_HASH_COUNT) && (MAX_HASH_COUNT != @MAX_HASH_COUNT_INT@)
+#error "MAX_HASH_COUNT mismatch with libeventlog build configuration"
+#endif
+#ifndef MAX_HASH_COUNT
+#if defined(__ASSEMBLER__)
+#define MAX_HASH_COUNT @MAX_HASH_COUNT_INT@
+#else
+#define MAX_HASH_COUNT @MAX_HASH_COUNT_INT@U
+#endif
+#endif
+
+#endif /* EVENT_LOG_CONFIG_DEF_H */

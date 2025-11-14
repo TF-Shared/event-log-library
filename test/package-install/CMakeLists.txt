@@ -6,7 +6,7 @@ SET(INSTALL_PREFIX "/tmp/install/dir" CACHE STRING "Install directory.")
 # Point CMake to your installed package
 set(CMAKE_INSTALL_PREFIX "${INSTALL_PREFIX}")
 
-find_package(eventlog REQUIRED)
+find_package(eventLog REQUIRED)
 
 add_library(test_integration main.c)
 target_link_libraries(test_integration PRIVATE eventlog::eventlog)

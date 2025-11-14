@@ -10,7 +10,6 @@
 
 #include "debug.h"
 #include "digest.h"
-#include "event_log.h"
 #include "event_print.h"
 
 #include <stddef.h>

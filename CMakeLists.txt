@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025, Arm Limited. All rights reserved.
+# Copyright (c) 2025-2026, Arm Limited. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -41,6 +41,19 @@ add_compile_definitions(DEBUG_BACKEND_HEADER="${DEBUG_BACKEND_HEADER}")
 set(MAX_HASH_COUNT 24 CACHE STRING "Maximum number of hashes")
 set(MAX_DIGEST_SIZE 64 CACHE STRING "Maximum digest length")
 
+set(EVENTLOG_CONFIG_DEF_IN
+    ${CMAKE_SOURCE_DIR}/include/event_log_config_def.h.in
+)
+set(EVENTLOG_CONFIG_DEF_OUT
+    ${CMAKE_CURRENT_BINARY_DIR}/include/event_log_config_def.h
+)
+string(REGEX REPLACE "^(0x[0-9a-fA-F]+|[0-9]+)(U|UL|ULL)$" "\\1"
+  MAX_HASH_COUNT_INT "${MAX_HASH_COUNT}")
+string(REGEX REPLACE "^(0x[0-9a-fA-F]+|[0-9]+)(U|UL|ULL)$" "\\1"
+  MAX_DIGEST_SIZE_INT "${MAX_DIGEST_SIZE}")
+
+configure_file(${EVENTLOG_CONFIG_DEF_IN} ${EVENTLOG_CONFIG_DEF_OUT} @ONLY)
+
 add_library(eventlog STATIC
     ${PROJECT_SOURCE_DIR}/src/event_log.c
     ${PROJECT_SOURCE_DIR}/src/event_print.c
@@ -54,6 +67,7 @@ target_compile_definitions(eventlog PRIVATE
 
 target_include_directories(eventlog PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
@@ -78,6 +92,11 @@ install(
     DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     PATTERN "private" EXCLUDE
+    PATTERN "*.in" EXCLUDE
+)
+install(
+    FILES ${EVENTLOG_CONFIG_DEF_OUT}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 install(EXPORT eventLogTargets

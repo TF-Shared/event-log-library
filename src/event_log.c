@@ -17,6 +17,17 @@
 #include "event_record.h"
 #include "tcg.h"
 
+/* Validate the hard-coded size macros once per build. */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201100L
+_Static_assert(EVENT2_HDR_SIZE ==
+		       (sizeof(event2_header_t) +
+			(HASH_ALG_COUNT * (sizeof(tpmt_ha) + MAX_DIGEST_SIZE)) +
+			sizeof(event2_data_t)),
+	       "EVENT2_HDR_SIZE changed, update event_log_def.h");
+_Static_assert(LOG_MIN_SIZE == (ID_EVENT_SIZE + LOC_EVENT_SIZE),
+	       "LOG_MIN_SIZE changed, update event_log_def.h");
+#endif
+
 /* Running Event Log Pointer */
 static uint8_t *log_ptr;
 
