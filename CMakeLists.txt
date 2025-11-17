@@ -6,7 +6,7 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-project(libeventlog VERSION 0.9 LANGUAGES C CXX ASM)
+project(libeventlog VERSION 0.1.0 LANGUAGES C CXX ASM)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 set(CMAKE_C_EXTENSIONS TRUE)
 
