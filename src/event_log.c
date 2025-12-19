@@ -390,10 +390,8 @@ int event_log_write_specid_event(const tpm_alg_id *algorithms,
 	/* TCG_EfiSpecIdEvent.VendorInfo */
 	if (vendor_info_size > 0) {
 		vendor_info_ptr =
-			(tcg_vendor_info_t
-				 *)(spec_id_ptr->digest_size +
-				    sizeof(id_event_algorithm_size_t) *
-					    algo_count);
+			(tcg_vendor_info_t *)(spec_id_ptr->digest_size +
+					      algo_count);
 
 		vendor_info_ptr->vendor_info_size = vendor_info_size;
 
