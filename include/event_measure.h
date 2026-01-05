@@ -10,12 +10,6 @@
 #include "event_log.h"
 #include "event_record.h"
 
-typedef struct {
-	unsigned int id;
-	const char *name;
-	unsigned int pcr;
-} event_log_metadata_t;
-
 typedef int (*evlog_hash_func_t)(uint32_t alg, void *data, unsigned int len,
 				 uint8_t *digest);
 

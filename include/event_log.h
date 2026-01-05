@@ -37,6 +37,12 @@ struct event_log_algorithm {
 	uint16_t size;
 };
 
+typedef struct event_log_metadata {
+	unsigned int id;
+	const char *name;
+	unsigned int pcr;
+} event_log_metadata_t;
+
 #define ID_EVENT_SIZE                                           \
 	(sizeof(id_event_headers_t) +                           \
 	 (sizeof(id_event_algorithm_size_t) * HASH_ALG_COUNT) + \
