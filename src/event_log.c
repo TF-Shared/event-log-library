@@ -366,15 +366,15 @@ int event_log_write_specid_event(const tpm_alg_id *algorithms,
 	spec_id_ptr->number_of_algorithms = algo_count;
 	for (uint16_t i = 0; i < algo_count; i++) {
 		switch (algorithms[i]) {
-		case TPM_ALG_SHA256:
+		case EVLOG_TPM_ALG_SHA256:
 			spec_id_ptr->digest_size[i].digest_size =
 				SHA256_DIGEST_SIZE;
 			break;
-		case TPM_ALG_SHA384:
+		case EVLOG_TPM_ALG_SHA384:
 			spec_id_ptr->digest_size[i].digest_size =
 				SHA384_DIGEST_SIZE;
 			break;
-		case TPM_ALG_SHA512:
+		case EVLOG_TPM_ALG_SHA512:
 			spec_id_ptr->digest_size[i].digest_size =
 				SHA512_DIGEST_SIZE;
 			break;

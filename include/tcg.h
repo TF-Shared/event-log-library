@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, Arm Limited. All rights reserved.
+ * Copyright (c) 2020-2026, Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -71,9 +71,9 @@ typedef uint16_t tpm_alg_id;
  * Ref. Table 9 - Definition of (UINT16) TPM_ALG_ID Constants
  * Trusted Platform Module Library. Part 2: Structures
  */
-#define TPM_ALG_SHA256 0x000B
-#define TPM_ALG_SHA384 0x000C
-#define TPM_ALG_SHA512 0x000D
+#define EVLOG_TPM_ALG_SHA256 0x000B
+#define EVLOG_TPM_ALG_SHA384 0x000C
+#define EVLOG_TPM_ALG_SHA512 0x000D
 
 /*
  * Helpers for setting TCG digest information based on the macros above and in
@@ -82,7 +82,7 @@ typedef uint16_t tpm_alg_id;
 #define CAT(a, b) CAT_(a, b)
 #define CAT_(a, b) a##b
 
-#define TCG_HASH_ALG(alg) { CAT(TPM_ALG_, alg), CAT(alg, _DIGEST_SIZE) }
+#define TCG_HASH_ALG(alg) { CAT(EVLOG_TPM_ALG_, alg), CAT(alg, _DIGEST_SIZE) }
 
 /* TCG Platform Type */
 #define PLATFORM_CLASS_CLIENT 0

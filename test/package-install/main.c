@@ -10,7 +10,7 @@ int main(void)
 	const char payload[] = "hello event log";
 
 	tpm_alg_id algos[] = {
-		TPM_ALG_SHA256,
+		EVLOG_TPM_ALG_SHA256,
 	};
 
 	if (event_log_init(event_log, event_log + sizeof(event_log)) != 0) {

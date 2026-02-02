@@ -11,9 +11,9 @@
 #include "event_log.h"
 
 const struct event_log_algorithm algorithms[] = {
-	{ TPM_ALG_SHA256, "SHA256", SHA256_DIGEST_SIZE },
-	{ TPM_ALG_SHA384, "SHA384", SHA384_DIGEST_SIZE },
-	{ TPM_ALG_SHA512, "SHA512", SHA512_DIGEST_SIZE },
+	{ EVLOG_TPM_ALG_SHA256, "SHA256", SHA256_DIGEST_SIZE },
+	{ EVLOG_TPM_ALG_SHA384, "SHA384", SHA384_DIGEST_SIZE },
+	{ EVLOG_TPM_ALG_SHA512, "SHA512", SHA512_DIGEST_SIZE },
 };
 
 const struct event_log_algorithm *
