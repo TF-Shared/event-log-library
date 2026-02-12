@@ -55,6 +55,14 @@
 #define EV_EFI_HCRTM_EVENT 0x80000010U
 #define EV_EFI_VARIABLE_AUTHORITY 0x800000E0U
 
+#ifndef MAX_SECURITY_CONFIG_NAME_LEN
+#define MAX_SECURITY_CONFIG_NAME_LEN 0x20
+#endif
+
+#ifndef MAX_SECURITY_CONFIG_DATA_LEN
+#define MAX_SECURITY_CONFIG_DATA_LEN 0x32
+#endif
+
 /* Table 7 - TPM_ALG_ID */
 typedef uint16_t tpm_alg_id;
 
@@ -301,6 +309,27 @@ typedef struct {
 	/* The Locality Indicator which sent the TPM2_Startup command */
 	uint8_t startup_locality;
 } startup_locality_event_t;
+
+typedef struct security_config_data {
+	/* The length of the name field in this structure */
+	uint64_t name_length;
+
+	/*
+	 * An 8-bit ASCII string which is the name of the
+	 * configuration data in this structure.
+	 * This string shall not be NULL terminated
+	 */
+	uint8_t name[MAX_SECURITY_CONFIG_NAME_LEN];
+
+	/* The length of the config_data field in this structure */
+	uint64_t config_data_length;
+
+	/*
+	 * An array containing the bytes of the security configuration
+	 * data measured. The format of this data depends on the name.
+	 */
+	uint8_t config_data[MAX_SECURITY_CONFIG_DATA_LEN];
+} security_config_data_t;
 
 #pragma pack(pop)
 
