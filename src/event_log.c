@@ -100,7 +100,13 @@ int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 		return -EINVAL;
 	}
 
-	(void)memcpy(pcr_event->digests.digests[0].digest, digest, digest_size);
+	if (digest != NULL) {
+		(void)memcpy(pcr_event->digests.digests[0].digest, digest,
+			     digest_size);
+	} else {
+		(void)memset(pcr_event->digests.digests[0].digest, 0,
+			     digest_size);
+	}
 
 	dst_p = pcr_event->digests.digests[0].digest + digest_size;
 
