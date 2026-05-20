@@ -96,6 +96,83 @@ static void event_log_print_digest(const uint8_t *digest, size_t digest_len)
 }
 
 /**
+ * Print an EV_SECURITY_CONFIG event payload.
+ *
+ * The event payload is encoded as:
+ * - uint64_t NameLength
+ * - uint8_t  Name[NameLength]
+ * - uint64_t ConfigDataLength
+ * - uint8_t  ConfigData[ConfigDataLength]
+ *
+ * @param[in] event       Pointer to the event payload.
+ * @param[in] event_size  Size of the event payload in bytes.
+ *
+ * @return 0 on success, or a negative error code on failure.
+ */
+static int event_log_print_security_config_event(const uint8_t *event,
+						 uint32_t event_size)
+{
+	uint64_t name_length;
+	uint64_t config_data_length;
+	uint8_t name[MAX_SECURITY_CONFIG_NAME_LEN + 1];
+	const uint8_t *ptr = event;
+	size_t remaining = event_size;
+
+	/* Read the security configuration name length. */
+	if (remaining < sizeof(name_length)) {
+		return -EINVAL;
+	}
+
+	memcpy(&name_length, ptr, sizeof(name_length));
+	ptr += sizeof(name_length);
+	remaining -= sizeof(name_length);
+
+	/* Validate and copy the name as a NULL terminated string. */
+	if (name_length > MAX_SECURITY_CONFIG_NAME_LEN) {
+		return -EINVAL;
+	}
+
+	if (remaining < (size_t)name_length) {
+		return -EINVAL;
+	}
+
+	memcpy(name, ptr, name_length);
+	name[name_length] = '\0';
+	ptr += name_length;
+	remaining -= name_length;
+
+	/* Read the configuration data length. */
+	if (remaining < sizeof(config_data_length)) {
+		return -EINVAL;
+	}
+
+	memcpy(&config_data_length, ptr, sizeof(config_data_length));
+	ptr += sizeof(config_data_length);
+	remaining -= sizeof(config_data_length);
+
+	/* Validate the configuration data before printing it. */
+	if (config_data_length > MAX_SECURITY_CONFIG_DATA_LEN) {
+		return -EINVAL;
+	}
+
+	if (remaining < config_data_length) {
+		return -EINVAL;
+	}
+
+	NOTICE("  Event              : EV_SECURITY_CONFIG\n");
+	NOTICE("    NameLength       : %u\n", (unsigned int)name_length);
+	NOTICE("    Name             : %s\n", name);
+	NOTICE("    ConfigDataLength : %u\n", (unsigned int)config_data_length);
+
+	if (config_data_length > 0U) {
+		event_log_print_spaced_hex(ptr, config_data_length,
+					   "    ConfigData       ");
+	}
+
+	return 0;
+}
+
+/**
  * Print a TCG_EfiSpecIDEventStruct entry from the event log.
  *
  * This function extracts and prints a TCG_EfiSpecIDEventStruct
@@ -218,6 +295,7 @@ static int event_log_print_id_event(uint8_t **log_addr, size_t *log_size)
 
 int event_log_print_pcr_event2(uint8_t **log_addr, const uint8_t *log_end)
 {
+	int rc;
 	uint32_t event_size, count;
 	const struct event_log_algorithm *algo_info;
 	event2_header_t *pcr_event = (event2_header_t *)*log_addr;
@@ -291,6 +369,12 @@ int event_log_print_pcr_event2(uint8_t **log_addr, const uint8_t *log_end)
 			NOTICE("  StartupLocality    : %u\n",
 			       ((startup_locality_event_t *)ptr)
 				       ->startup_locality);
+		} else if (pcr_event->event_type == EV_SECURITY_CONFIG) {
+			rc = event_log_print_security_config_event(ptr,
+								   event_size);
+			if (rc < 0) {
+				return rc;
+			}
 		} else {
 			NOTICE("  Event              : %s\n", ptr);
 		}

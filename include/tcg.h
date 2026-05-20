@@ -310,6 +310,14 @@ typedef struct {
 	uint8_t startup_locality;
 } startup_locality_event_t;
 
+/*
+ * `security_config_data` should be serialized before being added to
+ * Event log. It is the callers responsibilty to do this.
+ * NOTE: `MAX_SECURITY_CONFIG_NAME_LEN` and `MAX_SECURITY_CONFIG_DATA_LEN`
+ * are configurable and implementation specific values that the caller can
+ * override. Passing the structure as is can add unnecessary padding
+ * that can lead to unsuccessful parsing during `event_log_dump()`.
+ */
 typedef struct security_config_data {
 	/* The length of the name field in this structure */
 	uint64_t name_length;
