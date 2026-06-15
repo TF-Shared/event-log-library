@@ -47,7 +47,17 @@ static inline uint16_t digest_size_for_alg(uint16_t alg)
 
 static inline bool exceeds_bounds(uintptr_t ptr, size_t min_size)
 {
-	return min_size > log_end - ptr;
+	/*
+	 * Reject if the log is uninitialized or the write pointer is already
+	 * outside [log_start, log_end]. Without this guard, ptr > log_end makes
+	 * (log_end - ptr) underflow to a huge unsigned value, which would
+	 * incorrectly report "in bounds" and allow writes past the buffer.
+	 */
+	if (log_start == NULL || ptr < (uintptr_t)log_start || ptr > log_end) {
+		return true;
+	}
+
+	return min_size > (log_end - ptr);
 }
 
 int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
@@ -93,12 +103,23 @@ int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 
 	pcr_event->digests.count = spec_id_header->number_of_algorithms;
 
-	/* TCG_PCR_EVENT2.Digests.Digests[] */
-	pcr_event->digests.digests->algorithm_id = algorithm_id;
+	/*
+	 * Ensure the full digest fits before copying it. The header-only check
+	 * above does not account for the digest bytes, so verify space for
+	 * Digests[0].digest .. +digest_size to avoid overflowing the buffer.
+	 */
 	digest_size = digest_size_for_alg(algorithm_id);
 	if (digest_size == 0U) {
 		return -EINVAL;
 	}
+
+	if (exceeds_bounds((uintptr_t)pcr_event->digests.digests[0].digest,
+			   digest_size)) {
+		return -ENOMEM;
+	}
+
+	/* TCG_PCR_EVENT2.Digests.Digests[] */
+	pcr_event->digests.digests->algorithm_id = algorithm_id;
 
 	if (digest != NULL) {
 		(void)memcpy(pcr_event->digests.digests[0].digest, digest,
@@ -111,7 +132,7 @@ int event_log_write_pcr_event2_single(uint32_t pcr_index, uint32_t event_type,
 	dst_p = pcr_event->digests.digests[0].digest + digest_size;
 
 	if (exceeds_bounds((uintptr_t)dst_p,
-			   sizeof(event_data) + event_data_size)) {
+			   offsetof(event2_data_t, event) + event_data_size)) {
 		return -ENOMEM;
 	}
 
@@ -174,6 +195,15 @@ int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
 
 	for (size_t i = 0; i < spec_id_header->number_of_algorithms; i++) {
 		if (pcr_event->event_type == EV_NO_ACTION) {
+			tpmt_ha_digest_sz =
+				sizeof(tpmt_ha) +
+				spec_id_header->digest_size[i].digest_size;
+
+			if (exceeds_bounds((uintptr_t)dst_p,
+					   tpmt_ha_digest_sz)) {
+				return -ENOMEM;
+			}
+
 			((tpmt_ha *)dst_p)->algorithm_id =
 				spec_id_header->digest_size[i].algorithm_id;
 
@@ -203,7 +233,7 @@ int event_log_write_pcr_event2(uint32_t pcr_index, uint32_t event_type,
 	}
 
 	if (exceeds_bounds((uintptr_t)dst_p,
-			   sizeof(event_data) + event_data_size)) {
+			   offsetof(event2_data_t, event) + event_data_size)) {
 		return -ENOMEM;
 	}
 
@@ -387,7 +417,7 @@ int event_log_write_specid_event(const tpm_alg_id *algorithms,
 		default:
 			ERROR("Unrecognized TPM algorithm ID %u",
 			      algorithms[i]);
-			return EINVAL;
+			return -EINVAL;
 		}
 
 		spec_id_ptr->digest_size[i].algorithm_id = algorithms[i];
